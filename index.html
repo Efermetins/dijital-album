@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="tr" data-auth="loading">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#FBF2E6" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#231D18" media="(prefers-color-scheme: dark)">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Dijital Albüm</title>
+<meta name="apple-mobile-web-app-title" content="Dijital Albüm">
+<meta name="application-name" content="Dijital Albüm">
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png">
+<link rel="apple-touch-icon" sizes="180x180" href="icons/apple-touch-icon.png">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;1,9..144,500;1,9..144,600&family=Work+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<!-- Logo: "E & Z" monogramı (tek kaynak — tools/make-icons.mjs ana ekran ikonlarını da buradan üretir) -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <symbol id="brandLogoShape" viewBox="0 0 64 64">
+    <circle cx="32" cy="32" r="30" fill="none" stroke="currentColor" stroke-width="1.6"/>
+    <circle cx="32" cy="32" r="26.4" fill="none" stroke="currentColor" stroke-width="0.6" opacity="0.5"/>
+    <text x="32" y="39.6" text-anchor="middle" fill="currentColor" font-family="Fraunces, Georgia, serif" font-size="21" font-weight="500" letter-spacing="-0.3" style="font-variation-settings:'opsz' 96">E<tspan font-style="italic" font-size="19.5" dx="0.6" style="font-variation-settings:'opsz' 144">&amp;</tspan><tspan dx="0.6">Z</tspan></text>
+  </symbol>
+</svg>
+
+<!-- ================= GİRİŞ EKRANI ================= -->
+<section class="auth-screen" id="authScreen" aria-labelledby="authTitle">
+  <div class="hero-ambient" aria-hidden="true">
+    <span class="blob blob-a"></span>
+    <span class="blob blob-b"></span>
+    <span class="blob blob-c"></span>
+  </div>
+
+  <div class="auth-card">
+    <svg class="brand-logo brand-logo--large" viewBox="0 0 64 64" aria-hidden="true"><use href="#brandLogoShape"/></svg>
+    <p class="hero-kicker">bizim küçük arşivimiz</p>
+    <h1 class="auth-title" id="authTitle">Dijital Albüm</h1>
+
+    <p class="auth-lede" id="authLede">Devam etmek için e-posta adresin ve şifrenle giriş yap.</p>
+    <form class="auth-form" id="authForm" novalidate>
+      <label class="form-field">
+        <span>E-posta</span>
+        <input type="email" id="authEmail" autocomplete="email" inputmode="email" autocapitalize="off" spellcheck="false" placeholder="ornek@eposta.com" required>
+      </label>
+      <label class="form-field">
+        <span>Şifre</span>
+        <input type="password" id="authPassword" autocomplete="current-password" minlength="6" placeholder="En az 6 karakter" required>
+      </label>
+      <button type="submit" class="btn-primary" id="authSubmit">Giriş yap</button>
+    </form>
+    <button type="button" class="link-btn" id="authModeSwitch">İlk kez mi giriyorsun? Hesap oluştur</button>
+
+    <p class="form-status auth-status" id="authStatus" role="status" aria-live="polite"></p>
+  </div>
+</section>
+
+<header class="site-header" id="siteHeader">
+  <a class="brand" href="#anasayfa" aria-label="Dijital Albüm — ana sayfa">
+    <svg class="brand-logo" viewBox="0 0 64 64" aria-hidden="true"><use href="#brandLogoShape"/></svg>
+    <span class="wordmark">Dijital Albüm</span>
+  </a>
+  <div class="header-actions">
+    <nav class="header-nav" aria-label="Bölümler">
+      <a href="#anasayfa" data-nav-link data-target="anasayfa">Ana Sayfa</a>
+      <a href="#zaman-cizelgesi" data-nav-link data-target="zaman-cizelgesi">Zaman Çizelgesi</a>
+      <a href="#galeri" data-nav-link data-target="galeri">Galeri</a>
+      <a href="#ani-ekle" data-nav-link data-target="ani-ekle">Anı Ekle</a>
+      <a href="#ayarlar" data-open-settings>Ayarlar</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+
+  <!-- ================= KARŞILAMA ================= -->
+  <section class="hero" id="anasayfa">
+    <div class="hero-ambient" aria-hidden="true">
+      <span class="blob blob-a"></span>
+      <span class="blob blob-b"></span>
+      <span class="blob blob-c"></span>
+    </div>
+
+    <div class="hero-content">
+      <p class="hero-kicker">bizim küçük arşivimiz</p>
+      <h1 class="hero-title">Dijital Albüm</h1>
+      <p class="hero-sub">İki kişilik küçük bir dünyanın, biriktirdiğimiz anların ve yazmaya kıyamadığımız notların sayfası.</p>
+
+      <div class="counter-card" id="counter" role="group" aria-label="Birlikte geçen zaman">
+        <p class="counter-kicker">birlikte geçen zaman</p>
+        <div class="counter-days">
+          <span class="counter-value counter-value--days" id="countDays">0</span>
+          <span class="counter-unit">gün</span>
+        </div>
+        <div class="counter-clock">
+          <div class="counter-item">
+            <span class="counter-value" id="countHours">00</span>
+            <span class="counter-label">saat</span>
+          </div>
+          <div class="counter-item">
+            <span class="counter-value" id="countMinutes">00</span>
+            <span class="counter-label">dakika</span>
+          </div>
+          <div class="counter-item">
+            <span class="counter-value" id="countSeconds">00</span>
+            <span class="counter-label">saniye</span>
+          </div>
+        </div>
+        <p class="counter-since" id="countSince"></p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= ZAMAN ÇİZELGESİ ================= -->
+  <section class="timeline-section" id="zaman-cizelgesi">
+    <div class="section-head reveal">
+      <h2 class="section-title">Zaman Çizelgesi</h2>
+      <p class="section-lede">Başladığımız günden bugüne, önemli anlarımız</p>
+    </div>
+
+    <div class="timeline-panel" id="timelinePanel">
+      <div class="timeline-toolbar">
+        <div class="period-heading">
+          <span class="period-label" id="periodLabel" aria-live="polite"></span>
+          <span class="period-count" id="periodCount"></span>
+        </div>
+        <div class="segmented" role="group" aria-label="Zaman çizelgesi görünümü">
+          <button type="button" class="segmented-btn" data-mode="week" aria-pressed="false">Haftalık</button>
+          <button type="button" class="segmented-btn" data-mode="month" aria-pressed="true">Aylık</button>
+          <button type="button" class="segmented-btn" data-mode="year" aria-pressed="false">Yıllık</button>
+        </div>
+      </div>
+
+      <div class="timeline-body">
+        <div class="timeline-scroller" id="timelineScroller" tabindex="0" aria-label="Seçili dönemin anıları">
+          <button type="button" class="tl-pull tl-pull--newer" id="pullNewer" hidden>
+            <span class="tl-pull-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 19V5M6 11l6-6 6 6"/></svg></span>
+            <span class="tl-pull-text">Daha yeni: <strong id="pullNewerLabel"></strong></span>
+          </button>
+          <div class="timeline-list" id="timelineList"></div>
+          <p class="timeline-empty" id="timelineEmpty" hidden></p>
+          <button type="button" class="tl-pull tl-pull--older" id="pullOlder" hidden>
+            <span class="tl-pull-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M6 13l6 6 6-6"/></svg></span>
+            <span class="tl-pull-text">Daha eski: <strong id="pullOlderLabel"></strong></span>
+            <span class="tl-pull-hint">kaydırmaya devam et</span>
+          </button>
+        </div>
+
+        <div class="date-rail" id="dateRail" role="slider" tabindex="0" aria-orientation="vertical" aria-label="Tarih çubuğu: döneme atla">
+          <div class="date-rail-track" aria-hidden="true"></div>
+          <div class="date-rail-ticks" id="dateRailTicks" aria-hidden="true"></div>
+          <div class="date-rail-thumb" id="dateRailThumb" aria-hidden="true"></div>
+          <div class="date-rail-bubble" id="dateRailBubble" aria-hidden="true" hidden></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Örnek anılar: zaman çizelgesi bunları buradan okur -->
+    <template id="timelineSeed">
+      <li class="timeline-item reveal" data-date="2023-02-14">
+        <div class="timeline-dot"></div>
+        <div class="timeline-card">
+          <button type="button" class="timeline-media">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M12 21s-7.5-4.6-10-9.3C.3 8.1 2 4.5 5.4 4c2-.3 3.8.7 4.6 2.3C10.8 4.7 12.6 3.7 14.6 4c3.4.5 5.1 4.1 3.4 7.7C15.5 16.4 12 21 12 21z"/></svg>
+          </button>
+          <div class="timeline-text">
+            <span class="timeline-date">14 Şubat 2023</span>
+            <h3 class="timeline-title">İlk buluşma</h3>
+            <p class="timeline-desc">O küçük kafede üç saat sürmesi gereken bir kahve, yedi saate çıktı. Konuşacak hiç konumuz kalmayacağını düşünmüştük.</p>
+          </div>
+        </div>
+      </li>
+
+      <li class="timeline-item reveal" data-date="2023-06">
+        <div class="timeline-dot"></div>
+        <div class="timeline-card">
+          <button type="button" class="timeline-media">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M12 21s-7.5-4.6-10-9.3C.3 8.1 2 4.5 5.4 4c2-.3 3.8.7 4.6 2.3C10.8 4.7 12.6 3.7 14.6 4c3.4.5 5.1 4.1 3.4 7.7C15.5 16.4 12 21 12 21z"/></svg>
+          </button>
+          <div class="timeline-text">
+            <span class="timeline-date">Haziran 2023</span>
+            <h3 class="timeline-title">İlk tatilimiz</h3>
+            <p class="timeline-desc">Valizi son gece hazırladık, haritayı yanlış okuduk, yine de hayatımızın en güzel beş günüydü.</p>
+          </div>
+        </div>
+      </li>
+
+      <li class="timeline-item reveal" data-date="2024-03">
+        <div class="timeline-dot"></div>
+        <div class="timeline-card">
+          <button type="button" class="timeline-media">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M12 21s-7.5-4.6-10-9.3C.3 8.1 2 4.5 5.4 4c2-.3 3.8.7 4.6 2.3C10.8 4.7 12.6 3.7 14.6 4c3.4.5 5.1 4.1 3.4 7.7C15.5 16.4 12 21 12 21z"/></svg>
+          </button>
+          <div class="timeline-text">
+            <span class="timeline-date">Mart 2024</span>
+            <h3 class="timeline-title">Yeni eve taşınma</h3>
+            <p class="timeline-desc">Kutuların arasında yere oturup yemek yediğimiz o akşamı unutmayacağız.</p>
+          </div>
+        </div>
+      </li>
+
+      <li class="timeline-item reveal" data-timeline-end>
+        <div class="timeline-dot"></div>
+        <div class="timeline-card">
+          <button type="button" class="timeline-media">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M12 21s-7.5-4.6-10-9.3C.3 8.1 2 4.5 5.4 4c2-.3 3.8.7 4.6 2.3C10.8 4.7 12.6 3.7 14.6 4c3.4.5 5.1 4.1 3.4 7.7C15.5 16.4 12 21 12 21z"/></svg>
+          </button>
+          <div class="timeline-text">
+            <span class="timeline-date">Bugün</span>
+            <h3 class="timeline-title">Ve devam ediyor...</h3>
+            <p class="timeline-desc">Bu sayfa, bundan sonraki her anımız için burada bekliyor.</p>
+          </div>
+        </div>
+      </li>
+    </template>
+  </section>
+
+  <!-- ================= GALERİ ================= -->
+  <section class="gallery-section" id="galeri">
+    <div class="section-head reveal">
+      <h2 class="section-title">Galeri</h2>
+      <p class="section-lede">Biriktirdiğimiz karelerden birkaçı</p>
+    </div>
+
+    <div class="gallery-grid" id="galleryGrid">
+      <button type="button" class="gallery-item reveal" data-caption="ilk buluşma">
+        <div class="gallery-media">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M12 21s-7.5-4.6-10-9.3C.3 8.1 2 4.5 5.4 4c2-.3 3.8.7 4.6 2.3C10.8 4.7 12.6 3.7 14.6 4c3.4.5 5.1 4.1 3.4 7.7C15.5 16.4 12 21 12 21z"/></svg>
+        </div>
+      </button>
+      <button type="button" class="gallery-item reveal" data-caption="ilk tatil">
+        <div class="gallery-media">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M12 21s-7.5-4.6-10-9.3C.3 8.1 2 4.5 5.4 4c2-.3 3.8.7 4.6 2.3C10.8 4.7 12.6 3.7 14.6 4c3.4.5 5.1 4.1 3.4 7.7C15.5 16.4 12 21 12 21z"/></svg>
+        </div>
+      </button>
+      <button type="button" class="gallery-item reveal" data-caption="yeni ev">
+        <div class="gallery-media">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M12 21s-7.5-4.6-10-9.3C.3 8.1 2 4.5 5.4 4c2-.3 3.8.7 4.6 2.3C10.8 4.7 12.6 3.7 14.6 4c3.4.5 5.1 4.1 3.4 7.7C15.5 16.4 12 21 12 21z"/></svg>
+        </div>
+      </button>
+      <button type="button" class="gallery-item reveal" data-caption="sıradan bir pazar">
+        <div class="gallery-media">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M12 21s-7.5-4.6-10-9.3C.3 8.1 2 4.5 5.4 4c2-.3 3.8.7 4.6 2.3C10.8 4.7 12.6 3.7 14.6 4c3.4.5 5.1 4.1 3.4 7.7C15.5 16.4 12 21 12 21z"/></svg>
+        </div>
+      </button>
+      <button type="button" class="gallery-item reveal" data-caption="gün batımı">
+        <div class="gallery-media">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M12 21s-7.5-4.6-10-9.3C.3 8.1 2 4.5 5.4 4c2-.3 3.8.7 4.6 2.3C10.8 4.7 12.6 3.7 14.6 4c3.4.5 5.1 4.1 3.4 7.7C15.5 16.4 12 21 12 21z"/></svg>
+        </div>
+      </button>
+      <button type="button" class="gallery-item reveal" data-caption="kahkahalar">
+        <div class="gallery-media">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true"><path d="M12 21s-7.5-4.6-10-9.3C.3 8.1 2 4.5 5.4 4c2-.3 3.8.7 4.6 2.3C10.8 4.7 12.6 3.7 14.6 4c3.4.5 5.1 4.1 3.4 7.7C15.5 16.4 12 21 12 21z"/></svg>
+        </div>
+      </button>
+    </div>
+    <p class="gallery-meta" id="galleryCount"></p>
+  </section>
+
+  <!-- ================= ANI EKLE ================= -->
+  <section class="add-memory-section" id="ani-ekle">
+    <div class="section-head reveal">
+      <h2 class="section-title">Yeni Bir Anı Ekle</h2>
+      <p class="section-lede">Eklediğin anılar güvenle saklanır, hangi cihazdan girersen gir burada olur</p>
+    </div>
+
+    <form class="memory-form reveal" id="memoryForm">
+      <div class="washi" aria-hidden="true"></div>
+
+      <label class="form-field">
+        <span>Başlık</span>
+        <input type="text" name="title" id="memTitle" placeholder="ör. Sahilde yürüyüş" required>
+      </label>
+
+      <label class="form-field">
+        <span>Tarih</span>
+        <input type="date" name="date" id="memDate">
+      </label>
+
+      <label class="form-field">
+        <span>Not</span>
+        <textarea name="description" id="memDesc" rows="3" placeholder="O günü kısaca anlat..."></textarea>
+      </label>
+
+      <label class="form-field form-field--file">
+        <span>Fotoğraf veya video</span>
+        <input type="file" name="media" id="memPhoto" accept="image/*,video/mp4,video/quicktime,video/webm,video/x-m4v,video/3gpp,.mp4,.mov,.m4v,.webm" aria-describedby="memMediaHint">
+        <small class="form-hint" id="memMediaHint">Fotoğraf en fazla 15 MB, video (MP4, MOV, WEBM) en fazla 100 MB.</small>
+      </label>
+
+      <button type="submit" class="btn-primary">Anıyı Ekle</button>
+      <p class="form-status" id="formStatus" role="status" aria-live="polite"></p>
+    </form>
+  </section>
+
+</main>
+
+<footer class="site-footer">
+  <p>Efe <span class="amp">&amp;</span> Zeynep için, sevgiyle.</p>
+</footer>
+
+<!-- ================= MOBİL SEKME ÇUBUĞU ================= -->
+<nav class="tab-bar" id="tabBar" aria-label="Bölümler">
+  <a href="#anasayfa" data-nav-link data-target="anasayfa">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9h14v-9"/></svg>
+    <span>Ana Sayfa</span>
+  </a>
+  <a href="#zaman-cizelgesi" data-nav-link data-target="zaman-cizelgesi">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+    <span>Çizelge</span>
+  </a>
+  <a href="#galeri" data-nav-link data-target="galeri">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m4 17 5-5 4 4 3-3 4 4"/></svg>
+    <span>Galeri</span>
+  </a>
+  <a href="#ani-ekle" data-nav-link data-target="ani-ekle">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+    <span>Anı Ekle</span>
+  </a>
+  <a href="#ayarlar" data-open-settings>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+    <span>Ayarlar</span>
+  </a>
+</nav>
+
+<!-- ================= FOTOĞRAF PENCERESİ (LIGHTBOX) ================= -->
+<div class="dialog dialog--flip lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Fotoğraf ve video görüntüleyici" hidden>
+  <div class="lightbox-bg" aria-hidden="true"></div>
+  <div class="lightbox-viewport" id="lightboxViewport">
+    <div class="lightbox-track" id="lightboxTrack"></div>
+  </div>
+
+  <div class="lightbox-topbar">
+    <span class="lightbox-count glass-pill" id="lightboxCount"></span>
+    <div class="lightbox-topbar-actions">
+      <button type="button" class="glass-pill lb-notes-btn" id="lbNotesBtn" aria-expanded="false" aria-controls="lbSheet">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" aria-hidden="true"><path d="M5 5h14v14H5z"/><path d="M8.5 9.5h7M8.5 13h7M8.5 16.5h4"/></svg>
+        <span id="lbNotesLabel">Notu Gör</span>
+      </button>
+      <button type="button" class="glass-btn lightbox-close" id="lightboxClose" aria-label="Kapat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <button type="button" class="glass-btn lightbox-nav lightbox-prev" id="lightboxPrev" aria-label="Önceki fotoğraf">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M15 5 8 12l7 7"/></svg>
+  </button>
+  <button type="button" class="glass-btn lightbox-nav lightbox-next" id="lightboxNext" aria-label="Sonraki fotoğraf">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="m9 5 7 7-7 7"/></svg>
+  </button>
+
+  <p class="lightbox-caption glass-pill" id="lightboxCaption" aria-live="polite"></p>
+
+  <!-- Yukarı kaydırınca / "Notu Gör" ile alttan açılan not paneli -->
+  <section class="lb-sheet" id="lbSheet" aria-label="Anının notu" hidden>
+    <button type="button" class="lb-sheet-handle" id="lbSheetHandle" aria-label="Notu kapat"><span></span></button>
+    <div class="lb-sheet-scroll" id="lbSheetScroll">
+      <div class="md" id="lbDetail">
+        <div class="md-view">
+          <span class="memory-date md-date"></span>
+          <h2 class="memory-title md-title"></h2>
+          <p class="memory-desc md-note"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- ================= ANI PENCERESİ (ZAMAN ÇİZELGESİ) ================= -->
+<div class="dialog dialog--flip memory-modal" id="memoryModal" role="dialog" aria-modal="true" aria-labelledby="memoryModalTitle" hidden>
+  <div class="memory-backdrop" aria-hidden="true"></div>
+  <article class="memory-sheet">
+    <span class="memory-grabber" aria-hidden="true"></span>
+    <button type="button" class="glass-btn memory-close" id="memoryModalClose" aria-label="Kapat">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+    </button>
+    <div class="memory-scroll" id="memoryModalScroll">
+      <div class="memory-media" id="memoryModalMedia"></div>
+      <div class="memory-body md" id="memoryDetail">
+        <div class="md-view">
+          <span class="memory-date md-date" id="memoryModalDate"></span>
+          <h2 class="memory-title md-title" id="memoryModalTitle"></h2>
+          <p class="memory-desc md-note" id="memoryModalDesc"></p>
+        </div>
+      </div>
+    </div>
+  </article>
+</div>
+
+<!-- Anı ayrıntısı: düzenle / sil (anı penceresine ve not paneline kopyalanır) -->
+<template id="memoryDetailTpl">
+  <div class="md-actions" hidden>
+    <button type="button" class="md-btn md-edit">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg>
+      Düzenle
+    </button>
+    <button type="button" class="md-btn md-btn--danger md-delete">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>
+      Sil
+    </button>
+  </div>
+
+  <form class="md-form" hidden novalidate>
+    <label class="form-field">
+      <span>Başlık</span>
+      <input type="text" class="md-in-title" maxlength="200" required>
+    </label>
+    <label class="form-field">
+      <span>Tarih</span>
+      <input type="date" class="md-in-date">
+    </label>
+    <label class="form-field">
+      <span>Not</span>
+      <textarea class="md-in-note" rows="4" maxlength="5000"></textarea>
+    </label>
+    <div class="md-row">
+      <button type="button" class="btn-secondary md-cancel">Vazgeç</button>
+      <button type="submit" class="btn-primary md-save">Kaydet</button>
+    </div>
+  </form>
+
+  <div class="md-confirm" role="alertdialog" hidden>
+    <p class="md-confirm-title">Bu anı silinsin mi?</p>
+    <p class="md-confirm-text">Anı ve varsa fotoğrafı ya da videosu kalıcı olarak silinecek. Bu işlem geri alınamaz.</p>
+    <div class="md-row">
+      <button type="button" class="btn-secondary md-confirm-no">Vazgeç</button>
+      <button type="button" class="btn-danger md-confirm-yes">Evet, sil</button>
+    </div>
+  </div>
+
+  <p class="form-status md-status" role="status" aria-live="polite"></p>
+</template>
+
+<!-- ================= AYARLAR ================= -->
+<div class="dialog settings-modal" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" hidden>
+  <div class="settings-backdrop" aria-hidden="true"></div>
+  <section class="settings-sheet">
+    <div class="settings-head">
+      <h2 class="settings-title" id="settingsTitle">Ayarlar</h2>
+      <button type="button" class="settings-close" id="settingsClose" aria-label="Kapat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
+      </button>
+    </div>
+    <div class="settings-group">
+      <div class="settings-row">
+        <span class="settings-label">Hesap</span>
+        <span class="settings-value" id="settingsEmail"></span>
+      </div>
+    </div>
+    <button type="button" class="settings-signout" id="signOutBtn">Çıkış Yap</button>
+  </section>
+</div>
+
+<script src="config.js"></script>
+<script src="vendor/supabase.js"></script>
+<script src="supabaseClient.js"></script>
+<script src="script.js"></script>
+</body>
+</html>
