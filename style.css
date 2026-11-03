@@ -1974,12 +1974,12 @@ section { padding: 4.5rem 1.25rem; }
 
 /* ---------- DOKUNUNCA / ÜSTÜNE GELİNCE HAFİF BÜYÜME (GENEL) ----------
    Uygulamadaki her tıklanabilir öğe — bağlantılar, butonlar, ikon butonlar, form
-   etiketleri, kartlar — basıldığı an hafifçe büyür, bırakınca yumuşakça eski boyutuna
+   kartlar — basıldığı an hafifçe büyür, bırakınca yumuşakça eski boyutuna
    döner. ".is-pressed" sınıfını script.js parmak değdiği an ekler (bazı telefonlar
    :active'i gecikmeli gösterir). "scale" özelliği kullanılıyor: öğelerin kendi
    transform'larıyla (belirme animasyonu, FLIP geçişleri) çakışmaz.
    :not(#press) → kimlik seçicisi ağırlığı: bu geçiş tanımı diğer kuralları ezsin. */
-:is(a[href], button, [role="button"], label, summary, .gallery-item, .timeline-card):not(.timeline-media):not(#press) {
+:is(a[href], button, [role="button"], summary, .gallery-item, .timeline-card):not(.timeline-media):not(#press) {
   --press: 1.05;
   transition: scale 150ms ease-out, transform 600ms var(--ease), opacity 400ms var(--ease),
     background-color var(--dur) var(--ease), color var(--dur) var(--ease),
@@ -1987,9 +1987,9 @@ section { padding: 4.5rem 1.25rem; }
 }
 
 /* Geniş öğeler: %5 fazla gelir, daha az büyüsün */
-:is(.timeline-card, .form-field, .memory-form .btn-primary, .auth-form .btn-primary, .settings-signout, .md-row > button, .lb-sheet-handle):not(#press):not(#press-wide) { --press: 1.02; }
+:is(.timeline-card, .memory-form .btn-primary, .auth-form .btn-primary, .settings-signout, .md-row > button, .lb-sheet-handle):not(#press):not(#press-wide) { --press: 1.02; }
 
-:is(a[href], button, [role="button"], label, summary, .gallery-item, .timeline-card):not(.timeline-media):not(:disabled):not(#press):is(:active, .is-pressed) {
+:is(a[href], button, [role="button"], summary, .gallery-item, .timeline-card):not(.timeline-media):not(:disabled):not(#press):is(:active, .is-pressed) {
   scale: var(--press);
 }
 
@@ -2186,3 +2186,285 @@ section { padding: 4.5rem 1.25rem; }
 .lb-mute svg { width: 17px; height: 17px; }
 .lb-mute::after { content: ""; position: absolute; inset: -8px; } /* geniş dokunma alanı */
 .lb-mute:focus-visible { outline: 2px solid #FFFFFF; outline-offset: 2px; }
+
+/* ---------- SAYFALAR ----------
+   Her bölüm kendi tam sayfası; aynı anda sadece biri görünür (script.js → showPage).
+   Geçiş animasyonu JS'de (kayarak belirme). */
+.page:not(.is-active) { display: none !important; }
+
+.page {
+  min-height: calc(100vh - var(--header-h) - var(--tabbar-h));
+  min-height: calc(100svh - var(--header-h) - var(--tabbar-h) - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+}
+
+/* Ana sayfa dışındaki sayfalar: üstte daha az boşluk (tam sayfa olduğu için) */
+.page:not(.hero) { padding-top: 2.25rem; }
+.page:not(.hero) .section-head { margin-bottom: 1.75rem; }
+
+/* Galeri sayfası: tam sayfada köşeli kart yerine düz zemin */
+.page.gallery-section { background: none; border-radius: 0; }
+
+/* Alt bilgi sadece ana sayfada */
+html:not([data-page="anasayfa"]) .site-footer { display: none; }
+
+/* Ayarlar sayfası */
+.settings-page { max-width: 30rem; margin: 0 auto; }
+
+/* Beş sekme: yazılar biraz daha küçük, tek satırda kalsın */
+.tab-bar a { font-size: 0.62rem; white-space: nowrap; }
+.tab-bar svg { width: 23px; height: 23px; }
+
+/* ---------- SÖZLÜK: TELLİ, ÇİZGİLİ NOT DEFTERİ ----------
+   Kâğıt: yatay mavi-gri çizgiler, solda gül renkli kenar çizgisi, üstte tel spiral.
+   Yazılar el yazısı (Caveat) ve çizgilere oturur (--line). */
+.notebook {
+  --line: 2.4rem;
+  --nb-paper: #FFFDF8;
+  --nb-rule: #DCE4EB;
+  --nb-margin: #E9BEC5;
+  --nb-ink: #2B2B33;
+  --nb-ink-soft: #6F6C73;
+  --nb-margin-x: 2.6rem;
+  position: relative;
+  max-width: 36rem;
+  margin: 0 auto;
+  padding-top: 14px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .notebook {
+    --nb-paper: #1E1D1C;
+    --nb-rule: rgba(160, 180, 200, 0.16);
+    --nb-margin: rgba(215, 154, 163, 0.45);
+    --nb-ink: #F0EEEA;
+    --nb-ink-soft: #A9A6A2;
+  }
+}
+
+/* Tel spiral: kâğıdın üst kenarından geçen halkalar */
+.notebook-rings {
+  position: absolute;
+  top: 0;
+  left: 18px;
+  right: 18px;
+  z-index: 2;
+  height: 28px;
+  background:
+    radial-gradient(ellipse 5px 11px at 50% 50%, transparent 3px, #9C9C9F 3.2px, #C9C9CC 4.4px, transparent 4.8px) 0 0 / 22px 28px repeat-x;
+  pointer-events: none;
+}
+
+.notebook-page {
+  position: relative;
+  min-height: calc(var(--line) * 10);
+  padding: 1.4rem 1rem 1.6rem calc(var(--nb-margin-x) + 0.7rem);
+  border-radius: 6px 6px 10px 10px;
+  background-color: var(--nb-paper);
+  background-image:
+    /* tel delikleri */
+    radial-gradient(circle at 50% 50%, var(--paper) 0 3.4px, transparent 3.8px),
+    /* sol kenar çizgisi */
+    linear-gradient(to right, transparent calc(var(--nb-margin-x) - 1px), var(--nb-margin) calc(var(--nb-margin-x) - 1px), var(--nb-margin) var(--nb-margin-x), transparent var(--nb-margin-x)),
+    /* yatay satır çizgileri */
+    repeating-linear-gradient(to bottom, transparent 0, transparent calc(var(--line) - 1px), var(--nb-rule) calc(var(--line) - 1px), var(--nb-rule) var(--line));
+  background-size: 22px 14px, auto, auto;
+  background-position: 18px 8px, 0 0, 0 calc(1.4rem - 0.35rem);
+  background-repeat: repeat-x, no-repeat, repeat;
+  box-shadow: 0 1px 0 rgba(0, 0, 0, 0.04), 0 18px 40px -26px var(--shadow-lift), 0 0 0 1px var(--glass-border);
+  color: var(--nb-ink);
+}
+
+/* Ekleme satırı: kâğıda yazılıyormuş gibi */
+.dict-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0 0.6rem;
+}
+
+.dict-input {
+  flex: 1 1 8rem;
+  min-width: 0;
+  height: var(--line);
+  padding: 0 0.15rem;
+  border: 0;
+  border-bottom: 1.5px dashed var(--nb-margin);
+  border-radius: 0;
+  background: transparent;
+  color: var(--nb-ink);
+  font-family: var(--font-hand);
+  font-size: 1.45rem;
+  font-weight: 600;
+  line-height: var(--line);
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+.dict-input--meaning { flex-basis: 11rem; font-weight: 500; }
+.dict-input::placeholder { color: var(--nb-ink-soft); opacity: 0.75; }
+.dict-input:focus { outline: none; border-bottom-style: solid; border-bottom-color: var(--rose); }
+
+.dict-add {
+  flex: none;
+  height: 2rem;
+  margin-bottom: 0.2rem;
+  padding: 0 1rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--ink);
+  color: var(--on-ink);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.dict-add:disabled { opacity: 0.5; }
+
+.dict-status {
+  min-height: var(--line);
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: var(--line);
+  color: var(--rose-ink);
+}
+
+.dict-status:empty { min-height: 0.6rem; }
+
+.dict-list { list-style: none; margin: 0; padding: 0; }
+
+.dict-item { position: relative; }
+
+.dict-view {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  min-height: var(--line);
+}
+
+.dict-word {
+  flex: none;
+  max-width: 55%;
+  font-family: var(--font-hand);
+  font-size: 1.6rem;
+  font-weight: 600;
+  line-height: var(--line);
+  overflow-wrap: anywhere;
+}
+
+.dict-meaning {
+  flex: 1;
+  min-width: 0;
+  font-family: var(--font-hand);
+  font-size: 1.32rem;
+  font-weight: 500;
+  line-height: var(--line);
+  color: var(--nb-ink-soft);
+  overflow-wrap: anywhere;
+}
+
+.dict-meaning:not(:empty)::before { content: "— "; }
+
+.dict-actions {
+  flex: none;
+  display: flex;
+  gap: 0.15rem;
+  align-self: center;
+}
+
+.dict-btn {
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  color: var(--nb-ink-soft);
+}
+
+.dict-btn svg { width: 16px; height: 16px; }
+.dict-btn:hover { background: var(--fill); color: var(--nb-ink); }
+.dict-btn--danger:hover { color: var(--danger); }
+
+/* Düzenleme ve silme onayı satırları */
+.dict-edit-form,
+.dict-confirm {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 0 0.5rem;
+  padding: 0 0 0.3rem;
+}
+
+.dict-confirm p {
+  flex: 1 1 100%;
+  margin: 0;
+  font-family: var(--font-hand);
+  font-size: 1.35rem;
+  line-height: var(--line);
+}
+
+.dict-row-btn {
+  height: 2rem;
+  margin-bottom: 0.2rem;
+  padding: 0 0.9rem;
+  border-radius: 999px;
+  border: 1px solid var(--hairline);
+  background: var(--card);
+  color: var(--ink);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+
+.dict-row-btn--primary { background: var(--ink); border-color: var(--ink); color: var(--on-ink); }
+.dict-row-btn--danger { background: var(--danger); border-color: var(--danger); color: #FFFFFF; }
+
+.dict-empty {
+  margin: 0;
+  font-family: var(--font-hand);
+  font-size: 1.35rem;
+  line-height: var(--line);
+  color: var(--nb-ink-soft);
+}
+
+/* ---------- SAYACA DOKUNUNCA SÜZÜLEN KELİME VE KALPLER ---------- */
+.hero-content { position: relative; }
+
+.counter-card {
+  cursor: pointer;
+  -webkit-user-select: none;
+  user-select: none;
+  touch-action: manipulation;   /* hızlı art arda dokunuşta yakınlaştırma olmasın */
+}
+
+.counter-card:focus-visible { outline: 2px solid var(--ink); outline-offset: 4px; }
+
+.counter-floats {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.float-word {
+  position: absolute;
+  white-space: nowrap;
+  font-family: var(--font-hand);
+  font-size: 1.85rem;
+  font-weight: 600;
+  line-height: 1;
+  color: var(--rose-ink);
+  text-shadow: 0 1px 0 var(--paper), 0 0 10px var(--paper);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.float-heart {
+  position: absolute;
+  color: var(--rose);
+  opacity: 0;
+  will-change: transform, opacity;
+}
+
+.float-heart svg { display: block; width: 100%; height: 100%; }

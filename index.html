@@ -77,15 +77,17 @@
       <a href="#anasayfa" data-nav-link data-target="anasayfa">Ana Sayfa</a>
       <a href="#ani-cetveli" data-nav-link data-target="ani-cetveli">Anı Cetveli</a>
       <a href="#galeri" data-nav-link data-target="galeri">Galeri</a>
-      <a href="#ayarlar" data-open-settings>Ayarlar</a>
+      <a href="#sozluk" data-nav-link data-target="sozluk">Sözlük</a>
+      <a href="#ayarlar" data-nav-link data-target="ayarlar">Ayarlar</a>
     </nav>
   </div>
 </header>
 
-<main>
+<!-- Her bölüm kendi tam sayfası: aynı anda sadece biri görünür (script.js → showPage) -->
+<main class="pages">
 
   <!-- ================= KARŞILAMA ================= -->
-  <section class="hero" id="anasayfa">
+  <section class="page hero" id="anasayfa" aria-label="Ana Sayfa">
     <div class="hero-ambient" aria-hidden="true"></div>
 
     <div class="hero-content">
@@ -93,7 +95,8 @@
       <h1 class="hero-title">Dijital Albüm</h1>
       <p class="hero-sub">İki kişilik küçük bir dünyanın, biriktirdiğimiz anların ve yazmaya kıyamadığımız notların sayfası.</p>
 
-      <div class="counter-card" id="counter" role="group" aria-label="Birlikte geçen zaman">
+      <div class="counter-card" id="counter" role="group" tabindex="0" aria-label="Birlikte geçen zaman" aria-describedby="counterHint">
+        <span class="visually-hidden" id="counterHint">Dokununca sözlüğünüzden bir kelime süzülür.</span>
         <p class="counter-kicker">birlikte geçen zaman</p>
         <div class="counter-days">
           <span class="counter-value counter-value--days" id="countDays">0</span>
@@ -119,7 +122,7 @@
   </section>
 
   <!-- ================= ANI CETVELİ (zaman çizelgesi) ================= -->
-  <section class="timeline-section" id="ani-cetveli">
+  <section class="page timeline-section" id="ani-cetveli" aria-label="Anı Cetveli">
     <div class="section-head reveal">
       <h2 class="section-title">Anı Cetveli</h2>
       <p class="section-lede">Başladığımız günden bugüne, önemli anlarımız</p>
@@ -157,7 +160,7 @@
   </section>
 
   <!-- ================= GALERİ ================= -->
-  <section class="gallery-section" id="galeri">
+  <section class="page gallery-section" id="galeri" aria-label="Galeri">
     <div class="section-head reveal">
       <h2 class="section-title">Galeri</h2>
       <p class="section-lede">Biriktirdiğimiz karelerden birkaçı</p>
@@ -174,6 +177,45 @@
     <p class="gallery-meta" id="galleryCount"></p>
   </section>
 
+  <!-- ================= SÖZLÜK ================= -->
+  <section class="page dictionary-section" id="sozluk" aria-label="Sözlük">
+    <div class="section-head">
+      <h2 class="section-title">Sözlük</h2>
+      <p class="section-lede">Sadece ikimizin bildiği kelimeler</p>
+    </div>
+    <!-- Telli, çizgili not defteri sayfası -->
+    <div class="notebook" id="notebook">
+      <div class="notebook-rings" aria-hidden="true"></div>
+      <div class="notebook-page">
+        <form class="dict-form" id="dictForm" autocomplete="off" novalidate>
+          <label class="visually-hidden" for="dictWord">Kelime</label>
+          <input type="text" class="dict-input dict-input--word" id="dictWord" maxlength="80" placeholder="yeni kelime…" required>
+          <label class="visually-hidden" for="dictMeaning">Anlamı (isteğe bağlı)</label>
+          <input type="text" class="dict-input dict-input--meaning" id="dictMeaning" maxlength="300" placeholder="anlamı (isteğe bağlı)">
+          <button type="submit" class="dict-add" id="dictAdd">Ekle</button>
+        </form>
+        <p class="dict-status" id="dictStatus" role="status" aria-live="polite"></p>
+        <ul class="dict-list" id="dictList" aria-label="Sözlükteki kelimeler"></ul>
+        <p class="dict-empty" id="dictEmpty" hidden>Henüz kelime yok. İlk kelimenizi yukarıya yazın.</p>
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= AYARLAR ================= -->
+  <section class="page settings-section" id="ayarlar" aria-label="Ayarlar">
+    <div class="section-head">
+      <h2 class="section-title">Ayarlar</h2>
+    </div>
+    <div class="settings-page">
+      <div class="settings-group">
+        <div class="settings-row">
+          <span class="settings-label">Hesap</span>
+          <span class="settings-value" id="settingsEmail"></span>
+        </div>
+      </div>
+      <button type="button" class="settings-signout" id="signOutBtn">Çıkış Yap</button>
+    </div>
+  </section>
 
 </main>
 
@@ -195,7 +237,11 @@
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m4 17 5-5 4 4 3-3 4 4"/></svg>
     <span>Galeri</span>
   </a>
-  <a href="#ayarlar" data-open-settings>
+  <a href="#sozluk" data-nav-link data-target="sozluk">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 6.5c-1.8-1.3-4.3-2-7.5-2v13c3.2 0 5.7.7 7.5 2 1.8-1.3 4.3-2 7.5-2v-13c-3.2 0-5.7.7-7.5 2z"/><path d="M12 6.5v13"/></svg>
+    <span>Sözlük</span>
+  </a>
+  <a href="#ayarlar" data-nav-link data-target="ayarlar">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
     <span>Ayarlar</span>
   </a>
@@ -351,26 +397,6 @@
         <button type="submit" class="btn-primary">Anıyı Ekle</button>
         <p class="form-status" id="formStatus" role="status" aria-live="polite"></p>
       </form>
-  </section>
-</div>
-
-<!-- ================= AYARLAR ================= -->
-<div class="dialog settings-modal" id="settingsModal" role="dialog" aria-modal="true" aria-labelledby="settingsTitle" hidden>
-  <div class="settings-backdrop" aria-hidden="true"></div>
-  <section class="settings-sheet">
-    <div class="settings-head">
-      <h2 class="settings-title" id="settingsTitle">Ayarlar</h2>
-      <button type="button" class="settings-close" id="settingsClose" aria-label="Kapat">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>
-      </button>
-    </div>
-    <div class="settings-group">
-      <div class="settings-row">
-        <span class="settings-label">Hesap</span>
-        <span class="settings-value" id="settingsEmail"></span>
-      </div>
-    </div>
-    <button type="button" class="settings-signout" id="signOutBtn">Çıkış Yap</button>
   </section>
 </div>
 

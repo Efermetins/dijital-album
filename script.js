@@ -31,7 +31,10 @@
   /* ---- Dokunma geri bildirimi: parmak/fare değdiği AN öğe büyüsün ----
      Bazı telefonlar :active'i ~100 ms geciktirir; bu sınıf anında eklenir.
      Kaydırma başlarsa (pointercancel) ya da parmak çekilince kaldırılır. */
-  var PRESSABLE = 'a[href], button, [role="button"], label, summary, .gallery-item, .timeline-card';
+  // Form etiketleri (label) dahil DEĞİL: içindeki metin alanına dokununca alan büyüyüp kayarsa
+  // imleç dokunulan yere oturmaz (not düzenlerken metnin ortasına tıklanamıyordu).
+  var PRESSABLE = 'a[href], button, [role="button"], summary, .gallery-item, .timeline-card';
+  var TEXT_ENTRY = 'input, textarea, select, [contenteditable="true"]';
   var pressedEls = [];
 
   function releasePress() {
@@ -42,6 +45,7 @@
   document.addEventListener('pointerdown', function (e) {
     if (e.button > 0) return;
     releasePress();
+    if (e.target.closest && e.target.closest(TEXT_ENTRY)) return; // yazı alanında: hiçbir şey büyümesin
     var el = e.target.closest && e.target.closest(PRESSABLE);
     // Kartın içindeki butona basınca hem buton hem kart tepki versin
     while (el) {
@@ -218,6 +222,89 @@
     elSince.textContent = 'başlangıç: ' + START_DATE.getDate() + ' ' + MONTHS[START_DATE.getMonth()] + ' ' + START_DATE.getFullYear();
   }
 
+  /* ---- Sayaca dokununca: hafif büyüme + sözlükten bir kelime ve kalpler süzülür ----
+     Her dokunuşta sözlükten rastgele bir kelime (Sözlük sayfası) ve 1-2 küçük kalp
+     sayacın üstünden yukarı süzülüp kaybolur. Sözlük boşsa sadece kalpler.
+     Art arda dokunulabilir; aynı anda en fazla FLOAT_MAX öğe tutulur.
+     Hareketi azalt: kayma ve büyüme yok, sadece yerinde belirip solar. */
+  var counterEl = document.getElementById('counter');
+  var FLOAT_MAX = 24;
+  var FLOAT_HEART = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M12 20.5s-7.6-4.7-9.6-9.4C.9 7.4 3 4.2 6.2 4c2.1-.1 3.7 1 4.6 2.6l1.2 1.6 1.2-1.6C14.1 5 15.7 3.9 17.8 4c3.2.2 5.3 3.4 3.8 7.1-2 4.7-9.6 9.4-9.6 9.4z"/></svg>';
+  var floatLayer = null;
+
+  function ensureFloatLayer() {
+    if (floatLayer) return floatLayer;
+    floatLayer = document.createElement('div');
+    floatLayer.className = 'counter-floats';
+    floatLayer.setAttribute('aria-hidden', 'true');
+    counterEl.parentNode.insertBefore(floatLayer, counterEl);
+    return floatLayer;
+  }
+
+  // Tek bir süzülen öğe: (x, y) katman içindeki başlangıç noktası
+  function floatUp(el, x, y, opts) {
+    var layer = ensureFloatLayer();
+    while (layer.childElementCount >= FLOAT_MAX) layer.removeChild(layer.firstChild);
+    el.style.left = x + 'px';
+    el.style.top = y + 'px';
+    layer.appendChild(el);
+    var drift = opts.drift || 0;
+    var frames = reduced()
+      ? [{ opacity: 0, transform: 'translate(-50%, -50%)' }, { opacity: 1, offset: 0.25 }, { opacity: 1, offset: 0.7 }, { opacity: 0, transform: 'translate(-50%, -50%)' }]
+      : [
+        { opacity: 0, transform: 'translate(-50%, -50%) translateY(10px) scale(0.85)' },
+        { opacity: 1, offset: 0.18, transform: 'translate(-50%, -50%) translateY(-' + (opts.rise * 0.18) + 'px) scale(1)' },
+        { opacity: 1, offset: 0.6 },
+        { opacity: 0, transform: 'translate(calc(-50% + ' + drift + 'px), -50%) translateY(-' + opts.rise + 'px) scale(' + (opts.endScale || 1) + ')' }
+      ];
+    if (!el.animate) { setTimeout(function () { el.remove(); }, 800); return; }
+    var a = el.animate(frames, { duration: opts.duration, delay: opts.delay || 0, easing: 'cubic-bezier(0.25, 0.8, 0.35, 1)', fill: 'both' });
+    a.onfinish = a.oncancel = function () { el.remove(); };
+  }
+
+  function counterTap(clientX) {
+    if (!counterEl) return;
+    // 1) sayaç hafifçe büyüyüp yaylanarak döner
+    if (!reduced() && counterEl.animate) {
+      counterEl.animate([{ transform: 'scale(1)' }, { transform: 'scale(1.045)' }, { transform: 'scale(1)' }],
+        { duration: 360, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)' });
+    }
+    var layer = ensureFloatLayer();
+    var lr = layer.getBoundingClientRect();
+    var cr = counterEl.getBoundingClientRect();
+    // dokunulan yatay konum (klavyeyle tetiklenince ortası), kenarlara taşmasın
+    var cx = (typeof clientX === 'number' ? clientX : cr.left + cr.width / 2) - lr.left;
+    cx = clamp(cx, cr.left - lr.left + 50, cr.right - lr.left - 50);
+    var startY = cr.top - lr.top + cr.height * 0.32;
+
+    // 2) sözlükten rastgele kelime
+    var w = randomWord();
+    if (w) {
+      var word = document.createElement('span');
+      word.className = 'float-word';
+      word.textContent = w.word;
+      floatUp(word, cx, startY, { rise: 150, duration: 2100, drift: (Math.random() - 0.5) * 30 });
+    }
+    // 3) 1-2 küçük kalp
+    var hearts = 1 + Math.round(Math.random());
+    for (var i = 0; i < hearts; i++) {
+      var h = document.createElement('span');
+      h.className = 'float-heart';
+      h.innerHTML = FLOAT_HEART;
+      var size = 13 + Math.round(Math.random() * 8);
+      h.style.width = h.style.height = size + 'px';
+      var side = (i % 2 ? 1 : -1) * (w ? 34 + Math.random() * 30 : Math.random() * 40);
+      floatUp(h, cx + side, startY + 18, { rise: 110 + Math.random() * 50, duration: 1600 + Math.random() * 500, delay: w ? 120 + i * 160 : i * 140, drift: (Math.random() - 0.5) * 40, endScale: 1.15 });
+    }
+  }
+
+  if (counterEl) {
+    counterEl.addEventListener('click', function (e) { counterTap(e.detail === 0 ? null : e.clientX); });
+    counterEl.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); counterTap(null); }
+    });
+  }
+
   /* =========================================================
      2. Scroll ile belirme animasyonu
      ========================================================= */
@@ -239,63 +326,88 @@
   }
 
   /* =========================================================
-     3. Aktif bölüme göre menü vurgusu
+     3. Sayfalar: her bölüm kendi tam sayfası
+        Ana Sayfa · Anı Cetveli · Galeri · Sözlük · Ayarlar. Aynı anda sadece biri
+        görünür; alt sekme / menü ile geçilir. Geçiş: sekme yönüne göre hafifçe
+        kayarak belirir (hareketi azalt: sadece solma). Adres çubuğunda #sayfa,
+        telefonun "geri" hareketi önceki sayfaya döner. Her sayfa kendi kaydırma
+        konumunu hatırlar; aynı sekmeye tekrar basınca sayfanın başına kayar.
      ========================================================= */
-  var sections = ['anasayfa', 'ani-cetveli', 'galeri', 'ani-ekle']
-    .map(function (id) { return document.getElementById(id); })
-    .filter(Boolean);
-
+  var PAGES = ['anasayfa', 'ani-cetveli', 'galeri', 'sozluk', 'ayarlar'];
+  var PAGE_TITLES = { 'anasayfa': 'Dijital Albüm', 'ani-cetveli': 'Anı Cetveli', 'galeri': 'Galeri', 'sozluk': 'Sözlük', 'ayarlar': 'Ayarlar' };
   var navLinks = document.querySelectorAll('[data-nav-link]');
+  var currentPage = null;
+  var pageScroll = {};          // sayfa → son kaydırma konumu
+  var pageShownHooks = [];      // sayfa görününce çalışacaklar (ör. cetvel çubuğunu ölç)
 
   function setActive(id) {
     navLinks.forEach(function (link) {
-      link.classList.toggle('is-active', link.dataset.target === id);
+      var on = link.dataset.target === id;
+      link.classList.toggle('is-active', on);
+      if (on) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
     });
   }
 
-  var navLockUntil = 0;   // menüden geçiş sürerken aradaki bölümler vurgulanmasın
-
-  if ('IntersectionObserver' in window && sections.length) {
-    var navObserver = new IntersectionObserver(function (entries) {
-      if (Date.now() < navLockUntil) return;
-      entries.forEach(function (entry) {
-        if (entry.isIntersecting) setActive(entry.target.id);
-      });
-    }, { rootMargin: '-45% 0px -50% 0px', threshold: 0 });
-
-    sections.forEach(function (section) { navObserver.observe(section); });
+  function pageFromHash() {
+    var id = (location.hash || '').slice(1);
+    return PAGES.indexOf(id) >= 0 ? id : 'anasayfa';
   }
 
-  /* ---- Menü / alt sekme çubuğu: ilgili bölüme yumuşak kaydırma ----
-     Tarayıcının kendi #bağlantı atlamasına bırakılmaz: bazı telefonlarda (özellikle
-     ana ekrana eklenmiş uygulamada) hiç çalışmıyor ya da aynı sekmeye ikinci kez
-     basınca tepki vermiyordu. Konum, üstteki sabit başlığın yüksekliği düşülerek
-     hesaplanır. */
-  var siteHeader = document.getElementById('siteHeader');
+  function jumpScroll(y) {
+    // html'deki "scroll-behavior: smooth" devreye girmesin: anında
+    try { window.scrollTo({ top: y, left: 0, behavior: 'instant' }); } catch (err) { window.scrollTo(0, y); }
+  }
 
-  function scrollToSection(id) {
-    var target = document.getElementById(id);
-    if (!target) return;
-    var headerH = siteHeader ? siteHeader.offsetHeight : 0;
-    var top = id === 'anasayfa' ? 0 : Math.max(0, target.getBoundingClientRect().top + window.pageYOffset - headerH - 8);
-    var smooth = !reduced();
+  function showPage(id, opts) {
+    opts = opts || {};
+    if (PAGES.indexOf(id) < 0) id = 'anasayfa';
+    var prev = currentPage;
+    if (prev === id) {
+      // aynı sekmeye tekrar basıldı: sayfanın başına yumuşakça
+      if (!opts.silent) window.scrollTo({ top: 0, behavior: reduced() ? 'auto' : 'smooth' });
+      return;
+    }
+    if (prev) pageScroll[prev] = window.pageYOffset;
+    currentPage = id;
+    document.documentElement.setAttribute('data-page', id);
+    PAGES.forEach(function (p) {
+      var el = document.getElementById(p);
+      if (el) el.classList.toggle('is-active', p === id);
+    });
     setActive(id);
-    navLockUntil = Date.now() + (smooth ? 1200 : 0);
-    window.scrollTo({ top: top, behavior: smooth ? 'smooth' : 'auto' });
-    if (history.replaceState) history.replaceState(null, '', '#' + id);
+    document.title = id === 'anasayfa' ? 'Dijital Albüm' : PAGE_TITLES[id] + ' · Dijital Albüm';
+    jumpScroll(pageScroll[id] || 0);
+
+    var el = document.getElementById(id);
+    if (prev && el && el.animate && !opts.instant) {
+      var dir = PAGES.indexOf(id) > PAGES.indexOf(prev) ? 1 : -1;
+      el.animate(reduced()
+        ? [{ opacity: 0 }, { opacity: 1 }]
+        : [{ opacity: 0, transform: 'translateX(' + (dir * 28) + 'px)' }, { opacity: 1, transform: 'none' }],
+        { duration: reduced() ? 160 : 340, easing: EASE });
+    }
+    pageShownHooks.forEach(function (fn) { fn(id); });
   }
 
-  // Kaydırma bitince kilit hemen kalksın (destekleyen tarayıcılarda)
-  window.addEventListener('scrollend', function () { navLockUntil = 0; });
+  function goToPage(id) {
+    if (activeDialog) closeDialog(true);
+    if (id !== currentPage && history.pushState) history.pushState({ page: id }, '', '#' + id);
+    showPage(id);
+  }
 
   toArray(document.querySelectorAll('a[data-nav-link], a.brand')).forEach(function (link) {
     link.addEventListener('click', function (e) {
       var id = link.dataset.target || (link.getAttribute('href') || '').slice(1);
-      if (!document.getElementById(id)) return;
+      if (PAGES.indexOf(id) < 0) return;
       e.preventDefault();
-      if (activeDialog) closeDialog(true);
-      scrollToSection(id);
+      goToPage(id);
     });
+  });
+
+  // Telefonun / tarayıcının geri-ileri hareketi
+  window.addEventListener('popstate', function () {
+    if (activeDialog) closeDialog(true);
+    showPage(pageFromHash());
   });
 
   /* =========================================================
@@ -2332,6 +2444,10 @@
   parseSeed();
   renderTimeline();
 
+  // Cetvel sayfası görünür olunca tarih çubuğunu ölç ve kaydırma konumuna eşitle
+  pageShownHooks.push(function (id) { if (id === 'ani-cetveli') updateRail(); });
+  showPage(pageFromHash(), { instant: true });
+
   /* =========================================================
      9. Supabase — giriş (magic link) ve oturum
         Giriş yapılmadan uygulama içeriği gösterilmez. Asıl koruma
@@ -2884,6 +3000,7 @@
     hideSplash();
     closeDialog(true);
     clearRenderedMemories();
+    clearWords();
     if (form) form.reset();
     if (formStatus) formStatus.textContent = '';
     setAuthState('out');
@@ -2915,10 +3032,12 @@
       }
       currentUser = user;
       signOutBtn.title = user.email + ' olarak giriş yapıldı';
+      settingsEmail.textContent = user.email;
       authStatus.textContent = '';
       resetAuthForm();
       setAuthState('in');
       updateRail(); // panel artık görünür: çubuk ölçülerini yenile
+      loadWords();
       refreshMemories()
         .then(function () { return waitForMedia(SPLASH_MAX_MS); })
         .then(hideSplash, hideSplash);
@@ -2987,8 +3106,6 @@
   });
 
   /* ---- Ayarlar (Çıkış Yap buraya taşındı) ---- */
-  var settingsModal = document.getElementById('settingsModal');
-  var settingsClose = document.getElementById('settingsClose');
   var settingsEmail = document.getElementById('settingsEmail');
 
   /* ---- Alttan açılan pencereler (Ayarlar, Yeni Anı): yumuşak açılış / kapanış ----
@@ -3027,21 +3144,9 @@
     openDialog(modal, opener, { initialFocus: focusEl, animateOpen: m.animateOpen, animateClose: m.animateClose });
   }
 
-  function openSettings(opener) {
-    settingsEmail.textContent = currentUser ? currentUser.email : '';
-    openSheetDialog(settingsModal, opener, settingsClose);
-  }
-
-  toArray(document.querySelectorAll('[data-open-settings]')).forEach(function (link) {
-    link.addEventListener('click', function (e) {
-      e.preventDefault();
-      openSettings(link);
-    });
-  });
-
-  settingsClose.addEventListener('click', function () { closeDialog(); });
-  settingsModal.addEventListener('click', function (e) {
-    if (e.target === settingsModal || e.target.classList.contains('settings-backdrop')) closeDialog();
+  // Ayarlar sayfası görününce hesap bilgisini yaz
+  pageShownHooks.push(function (id) {
+    if (id === 'ayarlar') settingsEmail.textContent = currentUser ? currentUser.email : '';
   });
 
   signOutBtn.addEventListener('click', function () {
@@ -3189,6 +3294,235 @@
     // En yeni anı en başta, ama "Anı ekle" kalp kartının hemen arkasında
     var addCard = document.getElementById('galleryAdd');
     galleryGrid.insertBefore(btn, addCard ? addCard.nextSibling : galleryGrid.firstChild);
+  }
+
+  /* =========================================================
+     10b. Özel sözlük (Sözlük sayfası)
+          Supabase'deki "dictionary_words" tablosu (supabase/dictionary.sql).
+          Kelime + isteğe bağlı anlam; ekle / düzenle / sil (onaylı).
+          Tablo henüz kurulmadıysa sayfa ne yapılacağını söyler, uygulama bozulmaz.
+          Ana sayfadaki sayaca dokununca buradan rastgele bir kelime süzülür.
+     ========================================================= */
+  var DICT_COLUMNS = 'id, word, meaning, created_at';
+  var dictForm = document.getElementById('dictForm');
+  var dictWord = document.getElementById('dictWord');
+  var dictMeaning = document.getElementById('dictMeaning');
+  var dictAdd = document.getElementById('dictAdd');
+  var dictStatus = document.getElementById('dictStatus');
+  var dictList = document.getElementById('dictList');
+  var dictEmpty = document.getElementById('dictEmpty');
+  var dictWords = [];
+  var dictMissing = false;     // tablo kurulmamış
+  var dictToken = 0;
+  var EDIT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20h4L19 9l-4-4L4 16z"/><path d="m13.5 6.5 4 4"/></svg>';
+  var TRASH_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/></svg>';
+
+  function isMissingDictTable(err) {
+    var msg = (err && (err.message || '')) + ' ' + (err && err.code || '');
+    return /dictionary_words/i.test(msg) && /(PGRST205|42P01|does not exist|schema cache|could not find)/i.test(msg);
+  }
+
+  function dictError(err) {
+    if (isMissingDictTable(err)) {
+      dictMissing = true;
+      return 'Sözlük henüz kurulmamış: supabase/dictionary.sql dosyasını Supabase SQL Editor\'de bir kez çalıştır.';
+    }
+    if (err && err.message === 'no-permission') return 'Bu işlem için izin yok (supabase/dictionary.sql\'i tekrar çalıştır).';
+    return friendlyError(err);
+  }
+
+  function sortWords() {
+    dictWords.sort(function (a, b) { return a.word.localeCompare(b.word, 'tr', { sensitivity: 'base' }); });
+  }
+
+  function sameWord(a, b) { return a.trim().toLocaleLowerCase('tr') === b.trim().toLocaleLowerCase('tr'); }
+
+  function setDictEnabled(on) {
+    dictWord.disabled = dictMeaning.disabled = dictAdd.disabled = !on;
+  }
+
+  function renderDict() {
+    dictList.innerHTML = '';
+    dictWords.forEach(function (w) { dictList.appendChild(buildDictItem(w)); });
+    dictEmpty.hidden = dictWords.length > 0 || dictMissing;
+  }
+
+  function buildDictItem(w) {
+    var li = document.createElement('li');
+    li.className = 'dict-item';
+    li.dataset.id = w.id;
+    li.innerHTML =
+      '<div class="dict-view">' +
+        '<span class="dict-word"></span><span class="dict-meaning"></span>' +
+        '<span class="dict-actions">' +
+          '<button type="button" class="dict-btn dict-edit">' + EDIT_SVG + '</button>' +
+          '<button type="button" class="dict-btn dict-btn--danger dict-del">' + TRASH_SVG + '</button>' +
+        '</span>' +
+      '</div>';
+    li.querySelector('.dict-word').textContent = w.word;
+    li.querySelector('.dict-meaning').textContent = w.meaning || '';
+    li.querySelector('.dict-edit').setAttribute('aria-label', 'Düzenle: ' + w.word);
+    li.querySelector('.dict-del').setAttribute('aria-label', 'Sil: ' + w.word);
+    return li;
+  }
+
+  function findWord(id) {
+    for (var i = 0; i < dictWords.length; i++) if (String(dictWords[i].id) === String(id)) return dictWords[i];
+    return null;
+  }
+
+  // Satırı düzenleme / silme onayı moduna al
+  function openDictEditor(li, w) {
+    li.innerHTML =
+      '<form class="dict-edit-form" novalidate>' +
+        '<input type="text" class="dict-input dict-input--word" maxlength="80" aria-label="Kelime" required>' +
+        '<input type="text" class="dict-input dict-input--meaning" maxlength="300" aria-label="Anlamı" placeholder="anlamı (isteğe bağlı)">' +
+        '<button type="button" class="dict-row-btn dict-cancel">Vazgeç</button>' +
+        '<button type="submit" class="dict-row-btn dict-row-btn--primary">Kaydet</button>' +
+      '</form>';
+    var inputs = li.querySelectorAll('input');
+    inputs[0].value = w.word;
+    inputs[1].value = w.meaning || '';
+    inputs[0].focus();
+  }
+
+  function openDictConfirm(li, w) {
+    li.innerHTML =
+      '<div class="dict-confirm" role="alertdialog">' +
+        '<p></p>' +
+        '<button type="button" class="dict-row-btn dict-cancel">Vazgeç</button>' +
+        '<button type="button" class="dict-row-btn dict-row-btn--danger dict-confirm-yes">Evet, sil</button>' +
+      '</div>';
+    li.querySelector('p').textContent = '“' + w.word + '” sözlükten silinsin mi?';
+    li.querySelector('.dict-cancel').focus();
+  }
+
+  function loadWords() {
+    var token = ++dictToken;
+    return sb.from('dictionary_words').select(DICT_COLUMNS).then(function (res) {
+      if (token !== dictToken || !currentUser) return;
+      if (res.error) throw res.error;
+      dictMissing = false;
+      dictWords = res.data || [];
+      sortWords();
+      setDictEnabled(true);
+      dictStatus.textContent = '';
+      renderDict();
+    }).catch(function (err) {
+      if (token !== dictToken) return;
+      dictStatus.textContent = dictError(err);
+      setDictEnabled(!dictMissing);
+      dictWords = [];
+      renderDict();
+    });
+  }
+
+  function clearWords() {
+    dictToken++;
+    dictWords = [];
+    dictMissing = false;
+    dictStatus.textContent = '';
+    if (dictList) renderDict();
+  }
+
+  // Sayaç animasyonu için rastgele bir kelime (art arda aynısı gelmesin)
+  var lastRandomWord = null;
+  function randomWord() {
+    if (!dictWords.length) return null;
+    if (dictWords.length === 1) return dictWords[0];
+    var w;
+    do { w = dictWords[Math.floor(Math.random() * dictWords.length)]; } while (w === lastRandomWord);
+    lastRandomWord = w;
+    return w;
+  }
+
+  if (dictForm) {
+    dictForm.addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (!currentUser || dictMissing) return;
+      var word = dictWord.value.trim();
+      var meaning = dictMeaning.value.trim();
+      if (!word) { dictStatus.textContent = 'Önce bir kelime yaz.'; dictWord.focus(); return; }
+      if (dictWords.some(function (w) { return sameWord(w.word, word); })) {
+        dictStatus.textContent = '“' + word + '” zaten sözlükte.';
+        return;
+      }
+      dictAdd.disabled = true;
+      dictStatus.textContent = 'Ekleniyor...';
+      sb.from('dictionary_words').insert({ word: word, meaning: meaning || null }).select(DICT_COLUMNS).single()
+        .then(function (res) {
+          if (res.error) throw res.error;
+          dictWords.push(res.data);
+          sortWords();
+          renderDict();
+          dictForm.reset();
+          dictStatus.textContent = '';
+          toast('Sözlüğe eklendi', { heart: true, ms: 1600 });
+          dictWord.focus();
+        })
+        .catch(function (err) { dictStatus.textContent = dictError(err); })
+        .then(function () { dictAdd.disabled = dictMissing; });
+    });
+
+    dictList.addEventListener('click', function (e) {
+      var li = e.target.closest('.dict-item');
+      if (!li) return;
+      var w = findWord(li.dataset.id);
+      if (!w) return;
+      if (e.target.closest('.dict-edit')) { dictStatus.textContent = ''; openDictEditor(li, w); return; }
+      if (e.target.closest('.dict-del')) { dictStatus.textContent = ''; openDictConfirm(li, w); return; }
+      if (e.target.closest('.dict-cancel')) { li.replaceWith(buildDictItem(w)); return; }
+      var yes = e.target.closest('.dict-confirm-yes');
+      if (yes) {
+        yes.disabled = true;
+        sb.from('dictionary_words').delete().eq('id', w.id).select('id').then(function (res) {
+          if (res.error) throw res.error;
+          if (!res.data || !res.data.length) throw { message: 'no-permission' };
+          dictWords = dictWords.filter(function (x) { return x !== w; });
+          renderDict();
+          toast('Kelime silindi', { ms: 1600 });
+        }).catch(function (err) {
+          dictStatus.textContent = dictError(err);
+          yes.disabled = false;
+        });
+      }
+    });
+
+    dictList.addEventListener('submit', function (e) {
+      e.preventDefault();
+      var li = e.target.closest('.dict-item');
+      var w = li && findWord(li.dataset.id);
+      if (!w) return;
+      var inputs = li.querySelectorAll('input');
+      var word = inputs[0].value.trim();
+      var meaning = inputs[1].value.trim();
+      if (!word) { dictStatus.textContent = 'Kelime boş olamaz.'; inputs[0].focus(); return; }
+      if (dictWords.some(function (x) { return x !== w && sameWord(x.word, word); })) {
+        dictStatus.textContent = '“' + word + '” zaten sözlükte.';
+        return;
+      }
+      var save = li.querySelector('[type="submit"]');
+      save.disabled = true;
+      sb.from('dictionary_words').update({ word: word, meaning: meaning || null }).eq('id', w.id).select(DICT_COLUMNS)
+        .then(function (res) {
+          if (res.error) throw res.error;
+          if (!res.data || !res.data.length) throw { message: 'no-permission' };
+          w.word = res.data[0].word;
+          w.meaning = res.data[0].meaning;
+          sortWords();
+          renderDict();
+          dictStatus.textContent = '';
+        })
+        .catch(function (err) { dictStatus.textContent = dictError(err); save.disabled = false; });
+    });
+
+    // Esc: düzenleme / silme onayından çık
+    dictList.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      var li = e.target.closest('.dict-item');
+      var w = li && findWord(li.dataset.id);
+      if (w && !li.querySelector('.dict-view')) { e.preventDefault(); li.replaceWith(buildDictItem(w)); }
+    });
   }
 
   /* =========================================================
