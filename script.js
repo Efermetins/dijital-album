@@ -5,7 +5,7 @@
      0. Ayarlar ve yardımcılar
      ========================================================= */
   // Bu tarihi kendi başlangıç tarihinizle değiştirin
-  var START_DATE = new Date('2026-09-13T00:00:00');
+  var START_DATE = new Date('2026-08-01T00:00:00');
 
   var MONTHS = ['Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran', 'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık'];
   var MONTHS_SHORT = ['Oca', 'Şub', 'Mar', 'Nis', 'May', 'Haz', 'Tem', 'Ağu', 'Eyl', 'Eki', 'Kas', 'Ara'];
@@ -15,9 +15,43 @@
   var FADE_MS = 200;   // "hareketi azalt" açıkken sadece yumuşak solma
   var HEART_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.3" aria-hidden="true">' +
     '<path d="M12 21s-7.5-4.6-10-9.3C.3 8.1 2 4.5 5.4 4c2-.3 3.8.7 4.6 2.3C10.8 4.7 12.6 3.7 14.6 4c3.4.5 5.1 4.1 3.4 7.7C15.5 16.4 12 21 12 21z"/></svg>';
+  // Kalp pullu mektup ikonu: "Notu Gör" butonlarında (galeri penceresi + zaman çizelgesi)
+  var LETTER_SVG = '<svg class="letter-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+    '<path d="M13.6 6.5H4a2 2 0 0 0-2 2v8.5a2 2 0 0 0 2 2h13a2 2 0 0 0 2-2v-5.2"/><path d="m2.6 8.2 7.9 5.3a1.8 1.8 0 0 0 2 0l1.6-1.1"/>' +
+    '<rect x="15.2" y="2.6" width="6.8" height="7.4" rx="1" stroke-dasharray="1.1 0.9"/>' +
+    '<path d="M18.6 8.3s-2.1-1.2-2.1-2.7c0-.7.5-1.1 1-1.1.5 0 .9.3 1.1.7.2-.4.6-.7 1.1-.7.5 0 1 .4 1 1.1 0 1.5-2.1 2.7-2.1 2.7z" class="stamp-heart" fill="currentColor" stroke="none"/></svg>';
   var PLAY_SVG = '<svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>';
 
   var motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+
+  // iOS Safari, sayfada bir dokunma dinleyicisi yoksa :active durumunu göstermez.
+  // Bu boş dinleyici sayesinde "dokununca hafif büyüme" efekti iPhone'da da çalışır.
+  document.addEventListener('touchstart', function () {}, { passive: true });
+
+  /* ---- Dokunma geri bildirimi: parmak/fare değdiği AN öğe büyüsün ----
+     Bazı telefonlar :active'i ~100 ms geciktirir; bu sınıf anında eklenir.
+     Kaydırma başlarsa (pointercancel) ya da parmak çekilince kaldırılır. */
+  var PRESSABLE = 'a[href], button, [role="button"], label, summary, .gallery-item, .timeline-card';
+  var pressedEls = [];
+
+  function releasePress() {
+    pressedEls.forEach(function (el) { el.classList.remove('is-pressed'); });
+    pressedEls = [];
+  }
+
+  document.addEventListener('pointerdown', function (e) {
+    if (e.button > 0) return;
+    releasePress();
+    var el = e.target.closest && e.target.closest(PRESSABLE);
+    // Kartın içindeki butona basınca hem buton hem kart tepki versin
+    while (el) {
+      if (!el.disabled && !el.classList.contains('timeline-media')) { el.classList.add('is-pressed'); pressedEls.push(el); }
+      el = el.parentElement && el.parentElement.closest(PRESSABLE);
+    }
+  }, { passive: true });
+  ['pointerup', 'pointercancel', 'dragstart'].forEach(function (t) { document.addEventListener(t, releasePress, { passive: true }); });
+  window.addEventListener('scroll', releasePress, { passive: true, capture: true });
+  window.addEventListener('blur', releasePress);
 
   function reduced() { return motionQuery.matches; }
   // "Hareketi azalt" açıksa animasyon süresi 0 olur; jestler yine çalışır
@@ -207,7 +241,7 @@
   /* =========================================================
      3. Aktif bölüme göre menü vurgusu
      ========================================================= */
-  var sections = ['anasayfa', 'zaman-cizelgesi', 'galeri', 'ani-ekle']
+  var sections = ['anasayfa', 'ani-cetveli', 'galeri', 'ani-ekle']
     .map(function (id) { return document.getElementById(id); })
     .filter(Boolean);
 
@@ -219,8 +253,11 @@
     });
   }
 
+  var navLockUntil = 0;   // menüden geçiş sürerken aradaki bölümler vurgulanmasın
+
   if ('IntersectionObserver' in window && sections.length) {
     var navObserver = new IntersectionObserver(function (entries) {
+      if (Date.now() < navLockUntil) return;
       entries.forEach(function (entry) {
         if (entry.isIntersecting) setActive(entry.target.id);
       });
@@ -228,6 +265,38 @@
 
     sections.forEach(function (section) { navObserver.observe(section); });
   }
+
+  /* ---- Menü / alt sekme çubuğu: ilgili bölüme yumuşak kaydırma ----
+     Tarayıcının kendi #bağlantı atlamasına bırakılmaz: bazı telefonlarda (özellikle
+     ana ekrana eklenmiş uygulamada) hiç çalışmıyor ya da aynı sekmeye ikinci kez
+     basınca tepki vermiyordu. Konum, üstteki sabit başlığın yüksekliği düşülerek
+     hesaplanır. */
+  var siteHeader = document.getElementById('siteHeader');
+
+  function scrollToSection(id) {
+    var target = document.getElementById(id);
+    if (!target) return;
+    var headerH = siteHeader ? siteHeader.offsetHeight : 0;
+    var top = id === 'anasayfa' ? 0 : Math.max(0, target.getBoundingClientRect().top + window.pageYOffset - headerH - 8);
+    var smooth = !reduced();
+    setActive(id);
+    navLockUntil = Date.now() + (smooth ? 1200 : 0);
+    window.scrollTo({ top: top, behavior: smooth ? 'smooth' : 'auto' });
+    if (history.replaceState) history.replaceState(null, '', '#' + id);
+  }
+
+  // Kaydırma bitince kilit hemen kalksın (destekleyen tarayıcılarda)
+  window.addEventListener('scrollend', function () { navLockUntil = 0; });
+
+  toArray(document.querySelectorAll('a[data-nav-link], a.brand')).forEach(function (link) {
+    link.addEventListener('click', function (e) {
+      var id = link.dataset.target || (link.getAttribute('href') || '').slice(1);
+      if (!document.getElementById(id)) return;
+      e.preventDefault();
+      if (activeDialog) closeDialog(true);
+      scrollToSection(id);
+    });
+  });
 
   /* =========================================================
      4. Video önizlemeleri (sessiz, döngülü, kontrolsüz)
@@ -370,7 +439,9 @@
   var toastEl = null;
   var toastTimer = null;
 
-  function toast(message) {
+  // opts: { heart: true } → başında küçük kalp, { ms } → görünme süresi
+  function toast(message, opts) {
+    opts = opts || {};
     if (!toastEl) {
       toastEl = document.createElement('div');
       toastEl.className = 'toast';
@@ -379,10 +450,17 @@
       document.body.appendChild(toastEl);
     }
     toastEl.textContent = message;
+    if (opts.heart) {
+      var h = document.createElement('span');
+      h.className = 'toast-heart';
+      h.setAttribute('aria-hidden', 'true');
+      h.innerHTML = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 20.5s-7.6-4.7-9.6-9.4C.9 7.4 3 4.2 6.2 4c2.1-.1 3.7 1 4.6 2.6l1.2 1.6 1.2-1.6C14.1 5 15.7 3.9 17.8 4c3.2.2 5.3 3.4 3.8 7.1-2 4.7-9.6 9.4-9.6 9.4z"/></svg>';
+      toastEl.insertBefore(h, toastEl.firstChild);
+    }
     void toastEl.offsetWidth;
     toastEl.classList.add('is-visible');
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(function () { toastEl.classList.remove('is-visible'); }, 3200);
+    toastTimer = setTimeout(function () { toastEl.classList.remove('is-visible'); }, opts.ms || 3200);
   }
 
   /* ---- Anı ayrıntısı: görüntüle / düzenle / sil ----
@@ -487,6 +565,9 @@
       show: function (e) { entry = e; statusEl.textContent = ''; render(); setMode('view'); },
       reset: function () { statusEl.textContent = ''; if (entry) setMode('view'); },
       isBusy: function () { return mode !== 'view'; },
+      canEdit: canEdit,
+      // Doğrudan silme onayına geç (lightbox'taki çöp kutusu butonu)
+      askDelete: function () { if (!canEdit()) return false; statusEl.textContent = ''; setMode('confirm'); noBtn.focus({ preventScroll: true }); return true; },
       cancel: function () { var was = mode; statusEl.textContent = ''; setMode('view'); (was === 'confirm' ? deleteBtn : editBtn).focus(); }
     };
   }
@@ -511,8 +592,11 @@
   });
 
   /* =========================================================
-     6. Galeri + fotoğraf/video penceresi (lightbox)
-        - parmakla 1:1 kaydırma (swipe), yeterliyse sonraki/önceki
+     6. Galeri + fotoğraf/video penceresi (lightbox) — polaroid kartları
+        - her anı bir polaroid: çerçeve, fotoğrafın kendi en-boy oranına göre boyutlanır
+        - sağ üstte tarih etiketi, alttaki beyaz şeritte el yazısıyla sadece başlık
+        - Tinder tarzı geçiş: kart parmağı takip ederek döner, ekrandan atılır,
+          alttaki kart öne gelir (oklar / ok tuşları da aynı animasyonu kullanır)
         - iki parmakla yakınlaştırma (pinch), yakınken sürükleme (pan)
         - çift dokunma / çift tıklama ile hızlı yakınlaşma
         - fare: sürükleme, tekerlek veya Ctrl+tekerlek ile zoom
@@ -523,7 +607,7 @@
   var lightboxTopbar = lightbox.querySelector('.lightbox-topbar');
   var viewport = document.getElementById('lightboxViewport');
   var track = document.getElementById('lightboxTrack');
-  var lightboxCaption = document.getElementById('lightboxCaption');
+  var lightboxLive = document.getElementById('lightboxLive');
   var lightboxCount = document.getElementById('lightboxCount');
   var lightboxClose = document.getElementById('lightboxClose');
   var lightboxPrev = document.getElementById('lightboxPrev');
@@ -535,6 +619,7 @@
   var lbSheetHandle = document.getElementById('lbSheetHandle');
   var lbNotesBtn = document.getElementById('lbNotesBtn');
   var lbNotesLabel = document.getElementById('lbNotesLabel');
+  var lbDeleteBtn = document.getElementById('lbDeleteBtn');
   var sheetOpen = false;   // not paneli açık mı
   var sheetP = 0;          // panelin açıklık oranı (0 kapalı, 1 açık)
 
@@ -542,8 +627,8 @@
   var lbDetail = createDetail(document.getElementById('lbDetail'), {
     emptyNote: 'Bu anıya not eklenmemiş.',
     onSaved: function (entry) {
-      if (lightboxOpen) lightboxCaption.textContent = entry.title;
       afterMemoryChanged(entry);
+      if (lightboxOpen) fillPolaroidText(slides.cur); // karttaki tarih ve başlık da güncellensin
     },
     onDeleted: function (entry) {
       closeDialog(true);
@@ -551,14 +636,27 @@
     }
   });
 
-  var GAP = 20;            // fotoğraflar arası boşluk (px)
+  var SWIPE_ROT = 14;      // kart ekran genişliği kadar kaydırılınca kaç derece döner
+  var SWIPE_COMMIT = 0.22; // geçiş için gereken kaydırma (ekran genişliğinin oranı)
+  var BEHIND_SCALE = 0.92; // alttaki kartın bekleme ölçeği
+  var FLY_EASE = 'cubic-bezier(0.2, 0.7, 0.3, 1)';
   var MAX_SCALE = 4;
   var TAP_ZOOM = 2.5;      // çift dokununca yakınlaşma oranı
   var SLOP = 8;            // jestin "hareket" sayılması için gereken mesafe (px)
-  var VIDEO_CONTROLS_ZONE = 64; // videonun alt kısmı: oynatıcı kontrolleri, jest başlatmaz
+  // Videolar kontrolsüz, sessiz ve döngüde oynar; sadece küçük bir ses aç/kapa ikonu var.
+  // Ses tercihi pencere açık kaldıkça (ve sonraki videolarda) hatırlanır.
+  var lbMuted = true;
+  var SOUND_OFF_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor" stroke="none"/><path d="m16 9.5 5 5M21 9.5l-5 5"/></svg>';
+  var SOUND_ON_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z" fill="currentColor" stroke="none"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>';
 
-  var galleryItems = [];
+  var galleryItems = [];   // galerideki kareler
+  // Lightbox'ın gezdiği liste: galeri kareleri ya da zaman çizelgesi anıları.
+  // Her öğede dataset (mediaType, mediaSrc, caption, memoryId) ve thumb() vardır.
+  var lbItems = [];
+  var lbMode = 'gallery';  // 'gallery' | 'timeline' (küçük görsel farklar için)
   var currentIndex = 0;
+  var slides = { prev: null, cur: null, next: null }; // DOM'daki üç kart
+  var previewDir = 0;      // kaydırırken tarih etiketi hangi komşuyu gösteriyor (-1, 0, 1)
   var lightboxOpen = false;
   var trackBusy = false;   // geçiş animasyonu sürerken yeni jest başlamasın
   var zoom = { s: 1, x: 0, y: 0 };
@@ -581,74 +679,224 @@
     });
     if (galleryCount) {
       var photos = galleryItems.length - videos;
-      galleryCount.textContent = photos + ' fotoğraf' + (videos ? ', ' + videos + ' video' : '');
+      galleryCount.textContent = galleryItems.length ? photos + ' fotoğraf' + (videos ? ', ' + videos + ' video' : '') : '';
     }
+    var galleryEmpty = document.getElementById('galleryEmpty');
+    if (galleryEmpty) galleryEmpty.hidden = galleryItems.length > 0;
     observePreviews(galleryGrid);
   }
 
-  function buildSlideMedia(index) {
-    var item = galleryItems[index];
+  /* ---- Polaroid kartı ---- */
+
+  // "2026-11-03" → "3 Kas 2026"
+  function shortDate(value) {
+    if (!value) return '';
+    var p = String(value).split('-');
+    return parseInt(p[2], 10) + ' ' + MONTHS_SHORT[parseInt(p[1], 10) - 1] + ' ' + p[0];
+  }
+
+  // Kartta görünecek tarih ve başlık (not metni kartta gösterilmez; "Notu Gör" ile açılır)
+  function polaroidInfo(index) {
+    var item = lbItems[index];
+    var entry = entryForGalleryItem(item);
+    return {
+      date: shortDate(entry.dateValue),
+      title: entry.title || (item && item.dataset.caption) || ''
+    };
+  }
+
+  function fillPolaroidText(slide) {
+    if (!slide) return;
+    var info = polaroidInfo(slide._index);
+    var tag = slide.querySelector('.polaroid-date');
+    tag.textContent = info.date;
+    tag.hidden = !info.date;
+    tag.classList.remove('is-preview');
+    slide.querySelector('.polaroid-note span').textContent = info.title;
+  }
+
+  function buildSlide(index) {
+    var item = lbItems[index];
     var type = item.dataset.mediaType;
     var src = item.dataset.mediaSrc;
     var caption = item.dataset.caption || (type === 'video' ? 'Video' : 'Fotoğraf');
+
+    var slide = document.createElement('div');
+    slide.className = 'lb-slide';
+    slide._index = index;
+    slide.style.setProperty('--tilt', (index % 2 ? 1.3 : -1.1) + 'deg'); // çizelge görünümünde fotoğraf yığını hissi
+    slide._aspect = 0;
+
+    var card = document.createElement('figure');
+    card.className = 'lb-media polaroid';
+    var photo = document.createElement('div');
+    photo.className = 'polaroid-photo';
     var el;
 
     if (type === 'video' && src) {
+      card.dataset.kind = 'video';
       el = document.createElement('video');
-      el.className = 'lb-media lb-video';
+      el.className = 'lb-video';
       el.src = src;
-      el.controls = true;
+      el.controls = false;          // oynat/duraklat, ilerleme çubuğu yok
+      el.loop = true;               // bitince başa sarıp devam eder
+      el.muted = lbMuted;
+      el.defaultMuted = true;
+      el.setAttribute('muted', '');
+      el.disablePictureInPicture = true;
+      el.setAttribute('disablepictureinpicture', '');
       el.playsInline = true;
       el.setAttribute('playsinline', '');
       el.preload = 'metadata';
       el.setAttribute('aria-label', caption);
+      el.addEventListener('loadedmetadata', function () {
+        if (el.videoWidth && el.videoHeight) { slide._aspect = el.videoWidth / el.videoHeight; fitPolaroid(slide); }
+      });
     } else if (type === 'photo' && src) {
+      card.dataset.kind = 'photo';
       el = document.createElement('img');
       el.src = src;
       el.alt = caption;
       el.draggable = false;
       el.decoding = 'async';
-      el.className = 'lb-media';
+      if (el.complete && el.naturalWidth) {
+        slide._aspect = el.naturalWidth / el.naturalHeight; // önbellekte: oran hemen belli
+      } else {
+        el.addEventListener('load', function () {
+          if (el.naturalWidth && el.naturalHeight) { slide._aspect = el.naturalWidth / el.naturalHeight; fitPolaroid(slide); }
+        });
+      }
     } else {
+      card.dataset.kind = 'empty';
+      slide._aspect = 1;
       el = document.createElement('div');
-      el.className = 'lb-media lb-placeholder';
+      el.className = 'polaroid-empty';
       el.setAttribute('role', 'img');
       el.setAttribute('aria-label', caption);
       el.innerHTML = HEART_SVG;
     }
-    return el;
+    photo.appendChild(el);
+    if (card.dataset.kind === 'video') {
+      var mute = document.createElement('button');
+      mute.type = 'button';
+      mute.className = 'lb-mute';
+      photo.appendChild(mute);
+      syncMuteButton(mute);
+    }
+
+    var tag = document.createElement('span');
+    tag.className = 'polaroid-date';
+    var note = document.createElement('figcaption');
+    note.className = 'polaroid-note';
+    note.appendChild(document.createElement('span'));
+
+    card.appendChild(photo);
+    card.appendChild(tag);
+    card.appendChild(note);
+    slide.appendChild(card);
+    fillPolaroidText(slide);
+    return slide; // boyut, sayfaya eklendikten sonra fitPolaroid ile hesaplanır
   }
 
-  // Sadece önceki / mevcut / sonraki öğe DOM'da tutulur
-  function renderSlides() {
-    var n = galleryItems.length;
-    pauseLightboxVideos();
-    track.innerHTML = '';
-    animateTransform(track, 'translate3d(0,0,0)', 0);
+  // Çerçeveyi fotoğrafın gerçek oranına göre boyutlandır: ekrana sığan en büyük boyut.
+  // Oran henüz belli değilse (yükleniyor) 3:4 varsayılır, yüklenince yeniden hesaplanır.
+  function fitPolaroid(slide) {
+    if (!slide || !slide.isConnected) return;
+    var card = slide.firstChild;
+    var photo = card.firstChild;
+    var cs = getComputedStyle(slide);
+    var availW = document.documentElement.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
+    var availH = window.innerHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+    if (availW < 60 || availH < 60) return;
+    var a = slide._aspect || 0.75;
+    var p = clamp(Math.round(Math.min(availW, availH * a) * 0.045), 10, 20); // kenar çerçevesi
+    var b = clamp(Math.round(p * 4.2), 58, 86);                               // alt yazı şeridi
+    var w = Math.floor(Math.min(availW - 2 * p, (availH - p - b) * a));
+    w = Math.max(40, w);
+    card.style.setProperty('--pp', p + 'px');
+    card.style.setProperty('--pb', b + 'px');
+    card.style.width = (w + 2 * p) + 'px'; // uzun not kartı genişletmesin, satır kırsın
+    photo.style.width = w + 'px';
+    photo.style.height = Math.round(w / a) + 'px';
+  }
 
-    (n > 1 ? [-1, 0, 1] : [0]).forEach(function (k) {
-      var slide = document.createElement('div');
-      slide.className = 'lb-slide';
-      slide.style.transform = 'translate3d(calc(' + k + ' * (100% + ' + GAP + 'px)), 0, 0)';
-      if (k === 0) slide.setAttribute('data-current', '');
-      else slide.setAttribute('aria-hidden', 'true');
-      slide.appendChild(buildSlideMedia((currentIndex + k + n) % n));
-      track.appendChild(slide);
+  function eachSlide(fn) {
+    [slides.prev, slides.next, slides.cur].forEach(function (s) { if (s) fn(s); });
+  }
+
+  // Kartın konumunu / dönüşünü / saydamlığını ayarla (isteğe bağlı animasyonla)
+  function animateSlide(el, transform, opacity, ms, easing, done) {
+    if (el._animTimer) { clearTimeout(el._animTimer); el._animTimer = null; }
+    if (ms && reduced() && el.animate) {
+      // "Hareketi azalt": CSS geçişleri kapalı (style.css), basit solmayı Web Animations ile yap
+      var from = getComputedStyle(el).opacity;
+      el.style.transition = 'none';
+      el.style.transform = transform;
+      el.style.opacity = String(opacity);
+      el.animate([{ opacity: from }, { opacity: opacity }], { duration: ms, easing: easing || 'ease-out' });
+      el._animTimer = setTimeout(function () { el._animTimer = null; if (done) done(); }, ms + 40);
+      return;
+    }
+    if (ms) void el.offsetWidth; // başlangıç değerini sabitle
+    el.style.transition = ms ? 'transform ' + ms + 'ms ' + (easing || EASE) + ', opacity ' + ms + 'ms ' + (easing || EASE) : 'none';
+    el.style.transform = transform;
+    el.style.opacity = String(opacity);
+    if (!ms) { if (done) done(); return; }
+    el._animTimer = setTimeout(function () {
+      el._animTimer = null;
+      el.style.transition = 'none';
+      if (done) done();
+    }, ms + 40);
+  }
+
+  // Dinlenme hâli: mevcut kart önde, komşular arkada küçük ve görünmez
+  function layoutSlides() {
+    ['prev', 'next', 'cur'].forEach(function (k) {
+      var s = slides[k];
+      if (!s) return;
+      var isCur = k === 'cur';
+      if (isCur) { s.setAttribute('data-current', ''); s.removeAttribute('aria-hidden'); }
+      else { s.removeAttribute('data-current'); s.setAttribute('aria-hidden', 'true'); }
+      s.inert = !isCur;             // arkadaki kartlar odak / dokunuş almasın
+      s.style.zIndex = isCur ? '2' : '1';
+      s.style.transformOrigin = '';
+      animateSlide(s, isCur ? 'none' : 'scale(' + BEHIND_SCALE + ')', isCur ? 1 : 0, 0);
     });
+    previewDir = 0;
+  }
+
+  function updateLightboxMeta() {
+    var info = polaroidInfo(currentIndex);
+    lightboxCount.textContent = (currentIndex + 1) + ' / ' + lbItems.length;
+    lightboxLive.textContent = info.title + (info.date ? ', ' + info.date : '');
+    lbDetail.show(entryForGalleryItem(lbItems[currentIndex])); // ayrıntı paneli o anki anıyı göstersin
+    lbDeleteBtn.hidden = !lbDetail.canEdit(); // sadece gerçek (Supabase) anılarda
+  }
+
+  // Sadece önceki / mevcut / sonraki kart DOM'da tutulur
+  function renderSlides() {
+    var n = lbItems.length;
+    pauseLightboxVideos();
+    eachSlide(function (s) { clearTimeout(s._animTimer); });
+    track.innerHTML = '';
+    slides = { prev: null, cur: buildSlide(currentIndex), next: null };
+    if (n > 1) {
+      slides.prev = buildSlide((currentIndex - 1 + n) % n);
+      slides.next = buildSlide((currentIndex + 1) % n);
+    }
+    eachSlide(function (s) { track.appendChild(s); fitPolaroid(s); });
+    layoutSlides();
 
     zoom = { s: 1, x: 0, y: 0 };
     setZoomedClass(false);
-
-    lightboxCaption.textContent = galleryItems[currentIndex].dataset.caption || '';
-    lightboxCount.textContent = (currentIndex + 1) + ' / ' + n;
-    lbDetail.show(entryForGalleryItem(galleryItems[currentIndex])); // not paneli o anki anıyı göstersin
+    updateLightboxMeta();
   }
 
-  function currentMedia() { return track.querySelector('[data-current] .lb-media'); }
+  function currentMedia() { return slides.cur ? slides.cur.querySelector('.lb-media') : null; }
 
   function canZoom() {
     var m = currentMedia();
-    return !!m && m.tagName !== 'VIDEO';
+    return !!m && m.dataset.kind !== 'video';
   }
 
   function pauseLightboxVideos() {
@@ -666,11 +914,38 @@
 
   function playCurrentVideo() {
     var m = currentMedia();
-    if (lightboxOpen && m && m.tagName === 'VIDEO') {
-      var p = m.play();
-      if (p && p.catch) p.catch(noop);
+    var v = m && m.querySelector('video');
+    if (lightboxOpen && v) {
+      v.muted = lbMuted;
+      var p = v.play();
+      if (p && p.catch) p.catch(function () {
+        // Tarayıcı sesli otomatik oynatmaya izin vermediyse sessiz oynat
+        if (!v.muted) { v.muted = true; syncMuteButton(m.querySelector('.lb-mute'), true); var p2 = v.play(); if (p2 && p2.catch) p2.catch(noop); }
+      });
     }
   }
+
+  function syncMuteButton(btn, forceMuted) {
+    if (!btn) return;
+    var muted = forceMuted || lbMuted;
+    btn.innerHTML = muted ? SOUND_OFF_SVG : SOUND_ON_SVG;
+    btn.setAttribute('aria-label', muted ? 'Sesi aç' : 'Sesi kapat');
+    btn.setAttribute('aria-pressed', String(!muted));
+  }
+
+  // Ses aç/kapa: dokunuş anında (kullanıcı etkileşimi) uygulanır; tarayıcı sesli oynatmaya izin verir
+  track.addEventListener('click', function (e) {
+    var btn = e.target.closest('.lb-mute');
+    if (!btn) return;
+    e.stopPropagation();
+    lbMuted = !lbMuted;
+    var v = btn.parentElement.querySelector('video');
+    if (v) {
+      v.muted = lbMuted;
+      if (v.paused) { var p = v.play(); if (p && p.catch) p.catch(noop); }
+    }
+    toArray(track.querySelectorAll('.lb-mute')).forEach(function (b) { syncMuteButton(b); });
+  });
 
   function setZoomedClass(on) {
     viewport.classList.toggle('is-zoomed', on);
@@ -763,27 +1038,117 @@
     applyZoom(true);
   }
 
-  /* ---- Öğeler arası geçiş ---- */
+  /* ---- Anılar arası geçiş (Tinder tarzı kart) ----
+     dir = 1: sonraki (kart sola atılır), dir = -1: önceki (kart sağa atılır) */
 
-  function setTrack(px, ms, done) {
-    animateTransform(track, 'translate3d(' + px + 'px,0,0)', ms, done);
+  function neighborSlide(dir) { return dir > 0 ? slides.next : slides.prev; }
+
+  // Sağ üstteki tarih etiketi, kaydırırken gidilecek anının tarihini gösterir
+  function previewDate(dir) {
+    if (previewDir === dir || !slides.cur) return;
+    previewDir = dir;
+    var n = lbItems.length;
+    var tag = slides.cur.querySelector('.polaroid-date');
+    var text = polaroidInfo(dir ? (currentIndex + dir + n) % n : currentIndex).date;
+    tag.textContent = text;
+    tag.hidden = !text;
+    tag.classList.toggle('is-preview', dir !== 0);
+    if (text && !reduced() && tag.animate) {
+      tag.animate([{ opacity: 0, transform: 'translateY(-4px)' }, { opacity: 1, transform: 'none' }], { duration: 160, easing: EASE });
+    }
+  }
+
+  // Parmak/fare ile sürüklerken: üstteki kart döner ve kayar, alttaki belirir
+  function dragSwipe(dx) {
+    var cur = slides.cur;
+    var W = viewport.clientWidth || 1;
+    if (lbItems.length < 2) { animateSlide(cur, 'translate3d(' + (dx * 0.3) + 'px,0,0)', 1, 0); return; }
+    var dir = dx < 0 ? 1 : -1;
+    var target = neighborSlide(dir);
+    var other = neighborSlide(-dir);
+    var p = clamp(Math.abs(dx) / (W * 0.5), 0, 1);
+
+    if (other !== target) animateSlide(other, 'scale(' + BEHIND_SCALE + ')', 0, 0);
+    if (reduced()) {
+      // Hareketi azalt: kayma/dönme yok, sadece solarak değişim
+      animateSlide(cur, 'none', 1 - p * 0.7, 0);
+      animateSlide(target, 'none', p, 0);
+    } else {
+      cur.style.transformOrigin = '50% 100%';
+      animateSlide(cur, 'translate3d(' + dx + 'px,0,0) rotate(' + (dx / W * SWIPE_ROT) + 'deg)', 1, 0);
+      animateSlide(target, 'scale(' + (BEHIND_SCALE + (1 - BEHIND_SCALE) * p) + ')', Math.min(1, p * 1.6), 0);
+    }
+    previewDate(Math.abs(dx) > W * SWIPE_COMMIT ? dir : 0);
+  }
+
+  // Yetmediyse kart yerine yumuşakça döner
+  function swipeBack() {
+    var ms = reduced() ? FADE_MS : 320;
+    if (slides.cur) animateSlide(slides.cur, 'none', 1, ms);
+    [slides.prev, slides.next].forEach(function (s) {
+      if (s) animateSlide(s, 'scale(' + BEHIND_SCALE + ')', 0, ms);
+    });
+    previewDate(0);
   }
 
   function commit(dir) {
-    var n = galleryItems.length;
-    if (n < 2) { setTrack(0, dur(300)); return; }
+    var n = lbItems.length;
+    if (n < 2) { swipeBack(); return; }
     trackBusy = true;
     pauseLightboxVideos();
-    setTrack(-dir * (viewport.clientWidth + GAP), dur(300), function () {
-      currentIndex = (currentIndex + dir + n) % n;
-      renderSlides();
-      trackBusy = false;
-      playCurrentVideo();
-    });
+    var cur = slides.cur;
+    var target = neighborSlide(dir);
+    var other = neighborSlide(-dir);
+    var W = viewport.clientWidth || 1;
+    var done = function () { finishCommit(dir); };
+
+    previewDate(dir);
+    if (other !== target) animateSlide(other, 'scale(' + BEHIND_SCALE + ')', 0, 0);
+    target.style.zIndex = '1';
+    cur.style.zIndex = '2';
+
+    if (reduced()) {
+      animateSlide(cur, 'none', 0, FADE_MS, 'ease-out');
+      animateSlide(target, 'none', 1, FADE_MS, 'ease-out', done);
+    } else {
+      cur.style.transformOrigin = '50% 100%';
+      animateSlide(cur, 'translate3d(' + (-dir * W * 1.3) + 'px,' + (W * 0.06) + 'px,0) rotate(' + (-dir * SWIPE_ROT * 1.7) + 'deg)', 1, 360, FLY_EASE);
+      animateSlide(target, 'none', 1, 360, EASE, done);
+    }
+  }
+
+  // Atılan kart arkaya alınır (yeni komşu olur), öne gelen kart mevcut olur,
+  // öbür tarafa yeni bir komşu kart eklenir.
+  function finishCommit(dir) {
+    if (!lightboxOpen) return;
+    var n = lbItems.length;
+    var old = slides.cur;
+    var target = neighborSlide(dir);
+    var other = neighborSlide(-dir);
+    currentIndex = (currentIndex + dir + n) % n;
+
+    if (other && other !== target) other.remove();
+    var oldCard = old.querySelector('.lb-media');
+    if (oldCard) { oldCard.style.transition = 'none'; oldCard.style.transform = ''; }
+    fillPolaroidText(old);
+
+    var fresh = buildSlide(dir > 0 ? (currentIndex + 1) % n : (currentIndex - 1 + n) % n);
+    track.insertBefore(fresh, track.firstChild);
+    fitPolaroid(fresh);
+    if (dir > 0) slides = { prev: old, cur: target, next: fresh };
+    else slides = { prev: fresh, cur: target, next: old };
+
+    layoutSlides();
+    fillPolaroidText(slides.cur);
+    zoom = { s: 1, x: 0, y: 0 };
+    setZoomedClass(false);
+    updateLightboxMeta();
+    trackBusy = false;
+    playCurrentVideo();
   }
 
   function navigate(dir) {
-    if (!lightboxOpen || trackBusy || galleryItems.length < 2 || lbDetail.isBusy()) return;
+    if (!lightboxOpen || trackBusy || lbItems.length < 2 || lbDetail.isBusy()) return;
     resetZoom(false);
     commit(dir);
   }
@@ -839,8 +1204,7 @@
       zoom.y = rubber(g.oy + dy, b.minY, b.maxY);
       applyZoom(false);
     } else if (g.mode === 'swipe') {
-      // Parmağı 1:1 takip et (tek öğe varsa dirençli)
-      setTrack(galleryItems.length > 1 ? dx : dx * 0.3, 0);
+      dragSwipe(dx); // kart parmağı 1:1 takip eder (tek öğe varsa dirençli)
     }
   }
 
@@ -861,10 +1225,10 @@
       var vx = performance.now() - g.pt > 100 ? 0 : g.vx; // parmak durduysa hız sıfır
       var width = viewport.clientWidth;
       var flick = Math.abs(vx) > 0.45 && (vx < 0) === (dx < 0) && Math.abs(dx) > 24;
-      if (galleryItems.length > 1 && (Math.abs(dx) > width * 0.22 || flick)) {
+      if (lbItems.length > 1 && (Math.abs(dx) > width * SWIPE_COMMIT || flick)) {
         commit(dx < 0 ? 1 : -1);
       } else {
-        setTrack(0, dur(320)); // yetmediyse yerine yumuşakça dön
+        swipeBack(); // yetmediyse yerine yumuşakça dön
       }
     } else if (g.mode === 'pending' && kind === 'touch') {
       handleTap(g.lx, g.ly, target);
@@ -896,11 +1260,9 @@
     return target && target.closest ? target.closest('.lb-video') : null;
   }
 
-  // Dokunuş, videonun oynatıcı kontrollerinin olduğu alt şeritte mi?
-  function inVideoControls(target, clientY) {
-    var v = videoAt(target);
-    if (!v) return false;
-    return clientY > v.getBoundingClientRect().bottom - VIDEO_CONTROLS_ZONE;
+  // Dokunuş ses aç/kapa ikonunda mı? (orada kaydırma/kapatma jesti başlamasın)
+  function onMuteButton(target) {
+    return !!(target && target.closest && target.closest('.lb-mute'));
   }
 
   /* ---- İki parmak (pinch) ---- */
@@ -909,7 +1271,7 @@
 
   function startPinch(a, b) {
     clearTimeout(pendingClose);
-    if (gesture && gesture.mode === 'swipe') setTrack(0, dur(200));
+    if (gesture && gesture.mode === 'swipe') swipeBack();
     if (!canZoom()) { gesture = { mode: 'idle', moved: true }; return; }
     var c = mediaCenter();
     var mx = (a.clientX + b.clientX) / 2 - c.x;
@@ -943,8 +1305,8 @@
     lastTouchTime = Date.now();
     if (trackBusy) return;
     clearTimeout(pendingClose);
-    if (e.touches.length === 1 && inVideoControls(e.target, e.touches[0].clientY)) {
-      // Oynatıcı kontrollerine dokunuluyor: tarayıcıya bırak
+    if (e.touches.length === 1 && onMuteButton(e.target)) {
+      // Ses ikonuna dokunuluyor: butonun kendi tıklamasına bırak
       videoTouch = true;
       gesture = null;
       return;
@@ -997,9 +1359,6 @@
     var touch = e.changedTouches[0];
     var target = touch && touch.target;
 
-    // Videoya kısa dokunuş: tarayıcının kendi davranışı (kontrolleri göster/oynat)
-    if (gesture.mode === 'pending' && videoAt(target)) { gesture = null; return; }
-
     if (e.cancelable) e.preventDefault(); // dokunuştan sonra sahte "click" üretilmesin
     endDrag('touch', target);
   }, { passive: false });
@@ -1009,7 +1368,7 @@
     gesture = null;
     videoTouch = false;
     if (!g) return;
-    if (g.mode === 'swipe') setTrack(0, dur(320));
+    if (g.mode === 'swipe') swipeBack();
     else settleZoom();
   });
 
@@ -1029,7 +1388,7 @@
 
   viewport.addEventListener('mousedown', function (e) {
     if (e.button !== 0 || isFromTouch() || trackBusy) return;
-    if (videoAt(e.target)) return; // videoda fare, oynatıcıyı kullanır
+    if (onMuteButton(e.target)) return; // ses ikonu: normal tıklama
     e.preventDefault(); // metin seçimi / resim sürükleme olmasın
     suppressClick = false;
     beginDrag(e.clientX, e.clientY);
@@ -1106,13 +1465,13 @@
   /* ---- Açılış / kapanış animasyonu (önizlemeden büyüme) ---- */
 
   function lightboxChrome() {
-    return [lightboxBg, lightboxTopbar, lightboxPrev, lightboxNext, lightboxCaption, lbSheet];
+    return [lightboxBg, lightboxTopbar, lightboxPrev, lightboxNext, lbSheet];
   }
 
   function lightboxAnimateOpen(thumbEl) {
     var media = currentMedia();
-    lightbox.style.opacity = '0'; // medyanın boyutu belli olana kadar
-    whenMediaReady(media, function () {
+    lightbox.style.opacity = '0'; // fotoğrafın oranı (çerçeve boyutu) belli olana kadar
+    whenMediaReady(media && media.querySelector('img, video'), function () {
       lightbox.style.opacity = '';
       if (!lightboxOpen) return;
 
@@ -1124,6 +1483,16 @@
       lightboxChrome().forEach(function (el) {
         anim(lightbox, el, [{ opacity: 0 }, { opacity: 1 }], { duration: FLIP_MS, easing: EASE });
       });
+
+      if (lbMode === 'timeline') {
+        // Çizelge: polaroid yukarıdan hafifçe dönerek masaya düşer (galeride küçük resimden büyür)
+        anim(lightbox, media, [
+          { opacity: 0, transform: 'translateY(-70px) rotate(-7deg) scale(0.94)' },
+          { opacity: 1, offset: 0.55 },
+          { opacity: 1, transform: 'translateY(0) rotate(0deg) scale(1)' }
+        ], { duration: 520, easing: 'cubic-bezier(0.34, 1.35, 0.64, 1)' });
+        return;
+      }
 
       var from = visibleRect(thumbEl);
       if (from && media.getBoundingClientRect().width > 0) {
@@ -1148,10 +1517,10 @@
     // Zoom ve kaydırmayı anında sıfırla, sonra o anki öğenin önizlemesine küçül
     media.style.transition = 'none';
     media.style.transform = '';
-    animateTransform(track, 'translate3d(0,0,0)', 0);
+    layoutSlides();
 
-    var thumbEl = galleryItems[currentIndex];
-    var to = visibleRect(thumbEl);
+    var thumbEl = thumbOf(lbItems[currentIndex]);
+    var to = lbMode === 'timeline' ? null : visibleRect(thumbEl); // çizelgede küçülmek yerine aşağı kayıp solar
     var opts = { duration: FLIP_MS, easing: EASE_IN_OUT, fill: 'forwards' };
     var anims = lightboxChrome().map(function (el) {
       return anim(lightbox, el, [{ opacity: 1 }, { opacity: 0 }], opts);
@@ -1161,12 +1530,14 @@
       hideThumb(lightbox, thumbEl);
       anims.push(anim(lightbox, media, flipFrames(media, to, radiusOf(thumbEl), radiusOf(media) + 'px').reverse(), opts));
     } else {
-      anims.push(anim(lightbox, media, [{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(0.92)' }], opts));
+      anims.push(anim(lightbox, media, lbMode === 'timeline'
+        ? [{ opacity: 1, transform: 'translateY(0) rotate(0deg)' }, { opacity: 0, transform: 'translateY(60px) rotate(4deg) scale(0.96)' }]
+        : [{ opacity: 1, transform: 'scale(1)' }, { opacity: 0, transform: 'scale(0.92)' }], opts));
     }
     onAllFinished(anims, done);
   }
 
-  /* ---- Not paneli (yukarı kaydır / "Notu Gör") ---- */
+  /* ---- Not paneli (yukarı kaydır / "Notu Gör"): tam not + düzenle / sil ---- */
 
   // Galeri öğesine karşılık gelen anı (örnek fotoğraflarda sadece başlık var)
   function entryForGalleryItem(item) {
@@ -1202,7 +1573,7 @@
     sheetP = open ? 1 : 0;
     lightbox.classList.toggle('sheet-open', open);
     lbNotesBtn.setAttribute('aria-expanded', String(open));
-    lbNotesLabel.textContent = open ? 'Notu Gizle' : 'Notu Gör';
+    lbNotesLabel.textContent = open ? 'Notu Kapat' : 'Notu Gör';
     if (!open && lbSheet.contains(document.activeElement)) lbNotesBtn.focus();
     animateTransform(lbSheet, 'translate3d(0,' + (open ? 0 : sheetDistance()) + 'px,0)', animate ? dur(320) : 0, function () {
       if (!sheetOpen) lbSheet.hidden = true; // kapalıyken odak sırasından çıksın
@@ -1210,6 +1581,10 @@
   }
 
   lbNotesBtn.addEventListener('click', function () { setSheet(!sheetOpen, true); });
+  // Çöp kutusu: ayrıntı panelini doğrudan silme onayıyla aç
+  lbDeleteBtn.addEventListener('click', function () {
+    if (lbDetail.askDelete()) setSheet(true, true);
+  });
   lbSheetHandle.addEventListener('click', function () { setSheet(false, true); });
 
   // Panelin üstünden aşağı çekince kapanır (içerik en üstteyse)
@@ -1238,8 +1613,16 @@
 
   /* ---- Aç / kapat ---- */
 
-  function openLightbox(index, opener) {
-    if (index < 0 || !galleryItems.length) return;
+  // Lightbox öğesinin sayfadaki küçük resmi (galeri karesi ya da çizelge etiketinin fotoğrafı)
+  function thumbOf(item) {
+    if (!item) return null;
+    return typeof item.thumb === 'function' ? item.thumb() : item;
+  }
+
+  function openLightbox(index, opener, mode) {
+    if (index < 0 || !lbItems.length) return;
+    lbMode = mode === 'timeline' ? 'timeline' : 'gallery';
+    lightbox.classList.toggle('lb--journal', lbMode === 'timeline');
     currentIndex = index;
     lightboxOpen = true;
     trackBusy = false;
@@ -1258,7 +1641,7 @@
         trackBusy = false;
         suppressClick = false;
         clearTimeout(pendingClose);
-        clearTimeout(track._animTimer);
+        eachSlide(function (s) { clearTimeout(s._animTimer); s._animTimer = null; });
         zoom = { s: 1, x: 0, y: 0 };
         setZoomedClass(false);
         viewport.classList.remove('is-dragging');
@@ -1272,7 +1655,8 @@
     var item = e.target.closest('.gallery-item');
     if (!item) return;
     refreshGalleryItems();
-    openLightbox(galleryItems.indexOf(item), item);
+    lbItems = galleryItems;
+    openLightbox(galleryItems.indexOf(item), item, 'gallery');
   });
 
   lightboxClose.addEventListener('click', function () { closeDialog(); });
@@ -1280,7 +1664,9 @@
   lightboxNext.addEventListener('click', function () { navigate(1); });
 
   window.addEventListener('resize', function () {
-    if (lightboxOpen) resetZoom(false);
+    if (!lightboxOpen) return;
+    eachSlide(fitPolaroid); // ekran döndü / boyut değişti: çerçeveleri yeniden sığdır
+    resetZoom(false);
   });
 
   refreshGalleryItems();
@@ -1341,7 +1727,8 @@
     onAllFinished(anims, done);
   }
 
-  function openMemory(entry, opener) {
+  function openMemory(entry, opener, opts) {
+    opts = opts || {};
     var media = entry.media;
     memoryMedia.innerHTML = '';
     memoryMedia.classList.toggle('has-media', !!(media && media.src));
@@ -1382,6 +1769,16 @@
 
     var vid = memoryMedia.querySelector('video');
     if (vid) { var p = vid.play(); if (p && p.catch) p.catch(noop); }
+
+    // "Notu Gör": açılış animasyonu bitince not kısmına yumuşakça kaydır
+    if (opts.toNote) {
+      setTimeout(function () {
+        if (!activeDialog || activeDialog.el !== memoryModal) return;
+        var top = memoryScroll.scrollTop + document.getElementById('memoryDetail').getBoundingClientRect().top - memoryScroll.getBoundingClientRect().top;
+        if (memoryScroll.scrollTo) memoryScroll.scrollTo({ top: top, behavior: reduced() ? 'auto' : 'smooth' });
+        else memoryScroll.scrollTop = top;
+      }, dur(FLIP_MS) + 60);
+    }
   }
 
   // Anı penceresindeki ayrıntı (düzenle / sil dahil)
@@ -1405,39 +1802,32 @@
   });
 
   /* =========================================================
-     8. Zaman çizelgesi — dönem görünümü (Haftalık / Aylık / Yıllık)
-        - Sadece seçili dönemin anıları gösterilir (en yeniden eskiye)
-        - Dönemin sonunda kaydırmaya devam → bir önceki (daha eski) dönem,
-          başında yukarı → bir sonraki (daha yeni) dönem
-        - Kenardaki tarih çubuğu sürüklenerek döneme atlanır
-        - Boş dönemler atlanır (bulunduğumuz dönem hariç)
+     8. Zaman çizelgesi — kesintisiz akış (Haftalık / Aylık / Yıllık)
+        - Tüm dönemler tek listede, en yeniden en eskiye; serbestçe kaydırılır
+          (otomatik dönem atlama yok)
+        - Üstteki başlık ve kenardaki tarih çubuğu, kaydırdıkça o an
+          bakılan dönemi gösterir
+        - Tarih çubuğu sürüklenerek istenen döneme gidilir
+        - Boş dönemler gösterilmez (bulunduğumuz dönem hariç)
      ========================================================= */
   var timelineScroller = document.getElementById('timelineScroller');
   var timelineEmpty = document.getElementById('timelineEmpty');
   var periodLabelEl = document.getElementById('periodLabel');
   var periodCountEl = document.getElementById('periodCount');
-  var pullOlder = document.getElementById('pullOlder');
-  var pullNewer = document.getElementById('pullNewer');
-  var pullOlderLabel = document.getElementById('pullOlderLabel');
-  var pullNewerLabel = document.getElementById('pullNewerLabel');
   var dateRail = document.getElementById('dateRail');
   var railTicks = document.getElementById('dateRailTicks');
   var railThumb = document.getElementById('dateRailThumb');
   var railBubble = document.getElementById('dateRailBubble');
   var modeButtons = toArray(document.querySelectorAll('.segmented-btn[data-mode]'));
 
-  var PERIOD_NOUN = { week: 'hafta', month: 'ay', year: 'yıl' };
-  var PULL_WHEEL = 220;   // tekerlekle geçiş için gereken "fazla kaydırma"
-  var PULL_TOUCH = 90;    // parmakla geçiş için gereken çekme mesafesi (px)
   var RAIL_PAD = 22;
+  var READ_LINE = 0.3;    // kaydırıcının üstten %30'u: "şu an bakılan dönem" bu çizgiye göre
 
   var tlEntries = [];     // tüm anılar (örnekler + Supabase)
   var tlMode = 'month';
-  var tlKey = null;       // seçili dönem
-  var tlPeriods = [];     // gezilebilir dönemler (yeniden eskiye)
-  var tlBusy = false;
-  var tlCooldownUntil = 0;
-  var tlAnchor = null;    // bakılan tarih: görünüm değişince bu tarihin dönemine gidilir
+  var tlKey = null;       // şu an bakılan dönem
+  var tlPeriods = [];     // listedeki dönemler (yeniden eskiye)
+  var periodEls = {};     // dönem anahtarı → listedeki bölüm
   var entryOrder = 0;
 
   /* ---- Tarih / dönem hesapları ---- */
@@ -1492,11 +1882,6 @@
     return tlEntries
       .filter(function (e) { return !e.isEnd && e.date && periodKeyOf(e.date, tlMode) === key; })
       .sort(function (a, b) { return (b.date - a.date) || (b.order - a.order); });
-  }
-
-  function neighbor(dir) {
-    var i = tlPeriods.indexOf(tlKey);
-    return dir === 'older' ? tlPeriods[i + 1] : tlPeriods[i - 1];
   }
 
   /* ---- Veriler ---- */
@@ -1554,226 +1939,172 @@
     li.dataset.entryKey = entry.key;
     if (entry.memoryId) li.dataset.memoryId = entry.memoryId;
     if (entry.isEnd) li.setAttribute('data-timeline-end', '');
+    // Minimal etiket: küçük fotoğraf + başlık + tarih (not metni gösterilmez).
+    // Dokununca polaroid tam ekran görünümü açılır.
     li.innerHTML =
       '<div class="timeline-dot"></div>' +
-      '<div class="timeline-card">' +
-        '<button type="button" class="timeline-media">' + thumbHTML(entry.media) + '</button>' +
-        '<div class="timeline-text">' +
-          '<span class="timeline-date"></span>' +
-          '<h3 class="timeline-title"></h3>' +
-          '<p class="timeline-desc"></p>' +
-        '</div>' +
-      '</div>';
+      '<button type="button" class="timeline-card tl-tag">' +
+        '<span class="timeline-media">' + thumbHTML(entry.media) + '</span>' +
+        '<span class="tl-text"><span class="timeline-title"></span><span class="timeline-date"></span></span>' +
+        '<svg class="tl-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="m9 6 6 6-6 6"/></svg>' +
+      '</button>';
     li.querySelector('.timeline-date').textContent = entry.dateText;
     li.querySelector('.timeline-title').textContent = entry.title;
-    li.querySelector('.timeline-desc').textContent = entry.desc || '';
     var isVideo = entry.media && entry.media.type === 'video';
-    li.querySelector('.timeline-media').setAttribute('aria-label', entry.title + (isVideo ? ' — videoyu aç' : ' — anıyı aç'));
+    li.querySelector('.tl-tag').setAttribute('aria-label', entry.title + ', ' + entry.dateText + (isVideo ? ' — videoyu aç' : ' — anıyı aç'));
     return li;
+  }
+
+  function buildList(items) {
+    var ol = document.createElement('ol');
+    ol.className = 'timeline';
+    items.forEach(function (e) { ol.appendChild(buildTimelineItem(e)); });
+    return ol;
+  }
+
+  // Bir dönemin bölümü: başlık (ör. "Ekim 2026 · 3 anı") + anılar
+  function buildPeriod(key, items, endEntry) {
+    var wrap = document.createElement('div');
+    wrap.className = 'timeline-period';
+    wrap.dataset.period = key;
+
+    var head = document.createElement('p');
+    head.className = 'timeline-period-title';
+    head.setAttribute('role', 'heading');
+    head.setAttribute('aria-level', '3');
+    var name = document.createElement('span');
+    name.textContent = periodLabel(key, tlMode);
+    head.appendChild(name);
+    if (items.length) {
+      var count = document.createElement('span');
+      count.className = 'timeline-period-count';
+      count.textContent = items.length + ' anı';
+      head.appendChild(count);
+    }
+    wrap.appendChild(head);
+
+    if (tlMode === 'year') {
+      // Yıllıkta aylara bölünür (en yeni ay üstte)
+      var byMonth = {}, months = [];
+      items.forEach(function (e) {
+        var m = e.date.getMonth();
+        if (!byMonth[m]) { byMonth[m] = []; months.push(m); }
+        byMonth[m].push(e);
+      });
+      if (endEntry) {
+        var nowMonth = new Date().getMonth();
+        if (!byMonth[nowMonth]) { byMonth[nowMonth] = []; months.push(nowMonth); }
+        byMonth[nowMonth].unshift(endEntry);
+      }
+      months.sort(function (a, b) { return b - a; }).forEach(function (m) {
+        var sub = document.createElement('p');
+        sub.className = 'timeline-month';
+        sub.textContent = MONTHS[m];
+        wrap.appendChild(sub);
+        wrap.appendChild(buildList(byMonth[m]));
+      });
+    } else {
+      wrap.appendChild(buildList((endEntry ? [endEntry] : []).concat(items)));
+    }
+    return wrap;
   }
 
   function renderTimeline() {
     computePeriods();
-    if (tlPeriods.indexOf(tlKey) === -1) tlKey = currentKey();
-
-    var items = entriesIn(tlKey);
-    var isCurrent = tlKey === currentKey();
+    var nowKey = currentKey();
     var endEntry = null;
     tlEntries.forEach(function (e) { if (e.isEnd) endEntry = e; });
 
-    // Gruplar: yıllıkta aylara bölünür, diğerlerinde tek grup
-    var groups = [];
-    if (tlMode === 'year') {
-      var byMonth = {};
-      items.forEach(function (e) {
-        var m = e.date.getMonth();
-        if (!byMonth[m]) { byMonth[m] = { title: MONTHS[m], month: m, items: [] }; groups.push(byMonth[m]); }
-        byMonth[m].items.push(e);
-      });
-      if (isCurrent && endEntry) {
-        var nowMonth = new Date().getMonth();
-        if (!byMonth[nowMonth]) { byMonth[nowMonth] = { title: MONTHS[nowMonth], month: nowMonth, items: [] }; groups.unshift(byMonth[nowMonth]); }
-        byMonth[nowMonth].items.unshift(endEntry);
-      }
-      groups.sort(function (a, b) { return b.month - a.month; });
-    } else {
-      groups.push({ title: null, items: (isCurrent && endEntry ? [endEntry] : []).concat(items) });
-    }
-
     unobservePreviews(timelineList);
     timelineList.innerHTML = '';
-    groups.forEach(function (g) {
-      if (!g.items.length) return;
-      var wrap = document.createElement('div');
-      wrap.className = 'timeline-group';
-      if (g.title) {
-        var h = document.createElement('p');
-        h.className = 'timeline-group-title';
-        h.setAttribute('role', 'heading');
-        h.setAttribute('aria-level', '3');
-        h.textContent = g.title;
-        wrap.appendChild(h);
-      }
-      var ol = document.createElement('ol');
-      ol.className = 'timeline';
-      g.items.forEach(function (e) { ol.appendChild(buildTimelineItem(e)); });
-      wrap.appendChild(ol);
-      timelineList.appendChild(wrap);
+    periodEls = {};
+    headingKey = null; // başlık yeniden yazılsın (görünüm ya da anı sayısı değişmiş olabilir)
+    tlPeriods = tlPeriods.filter(function (key) {
+      var items = entriesIn(key);
+      var end = key === nowKey ? endEntry : null;
+      if (!items.length && !end) return false;
+      periodEls[key] = buildPeriod(key, items, end);
+      timelineList.appendChild(periodEls[key]);
+      return true;
     });
+    timelineEmpty.hidden = tlPeriods.length > 0;
 
-    var older = neighbor('older');
-    var newer = neighbor('newer');
-
-    timelineEmpty.hidden = items.length > 0;
-    timelineEmpty.textContent = 'Bu ' + PERIOD_NOUN[tlMode] + ' henüz anı yok.' + (older ? ' Daha eski anılar için aşağı kaydır.' : '');
-
-    periodLabelEl.textContent = periodLabel(tlKey, tlMode);
-    periodCountEl.textContent = items.length ? items.length + ' anı' : '';
-
-    pullOlder.hidden = !older;
-    pullNewer.hidden = !newer;
-    if (older) pullOlderLabel.textContent = periodLabel(older, tlMode);
-    if (newer) pullNewerLabel.textContent = periodLabel(newer, tlMode);
-
-    resetPull();
+    if (tlPeriods.indexOf(tlKey) === -1) tlKey = tlPeriods[0] || null;
     updateRail();
+    syncToScroll();
     observePreviews(timelineList);
   }
 
-  function applyScroll(where) {
-    timelineScroller.scrollTop = where === 'bottom' ? timelineScroller.scrollHeight : 0;
+  /* ---- Kaydırma: o an bakılan dönemi bul ---- */
+
+  function atBottom() { return timelineScroller.scrollTop + timelineScroller.clientHeight >= timelineScroller.scrollHeight - 2; }
+
+  // Kaydırma konumu:
+  //  - index: bakılan dönem (başlığı okuma çizgisini geçmiş son dönem)
+  //  - rail:  tarih çubuğu için ondalıklı konum (listenin üst kenarına göre, akıcı)
+  function scrollPosition() {
+    var n = tlPeriods.length;
+    if (!n) return { index: 0, rail: 0 };
+    var st = timelineScroller.scrollTop;
+    if (st <= 1) return { index: 0, rail: 0 };
+    if (atBottom()) return { index: n - 1, rail: n - 1 };
+    // offsetTop/offsetHeight: kaydırma sırasında sayfa düzenini yeniden hesaplatmaz
+    // (getBoundingClientRect her karede çağrılınca dönem sınırlarında takılma oluyordu)
+    var base = timelineList.offsetTop - st;   // listenin kaydırıcı görünümüne göre üstü
+    var line = Math.min(timelineScroller.clientHeight * READ_LINE, 160);
+    var idx = 0, top = 0;
+    for (var i = 0; i < n; i++) {
+      var t = base + periodEls[tlPeriods[i]].offsetTop;
+      if (t <= line) idx = i;
+      if (t <= 0) top = i;
+      if (t > line) break;
+    }
+    var el = periodEls[tlPeriods[top]];
+    var rail = top + clamp(-(base + el.offsetTop) / Math.max(el.offsetHeight, 1), 0, 1);
+    return { index: idx, rail: Math.min(rail, n - 1) };
   }
 
-  // Dönem değiştir (yumuşak geçişle; "hareketi azalt" açıksa anında)
-  function goToPeriod(key, opts) {
-    opts = opts || {};
-    if (!key || tlBusy) return;
-    if (key === tlKey) { resetPull(); updateRail(); return; }
+  var headingKey = null;   // başlıkta şu an yazan dönem (görünüm değişince sıfırlanır)
 
-    var dir = opts.direction || (tlPeriods.indexOf(key) > tlPeriods.indexOf(tlKey) ? 'older' : 'newer');
-    var scrollTo = opts.scroll || 'top';
-    tlCooldownUntil = Date.now() + 700;
-
-    swapTimeline(dir, function () {
-      tlKey = key;
-      tlAnchor = null;
-      renderTimeline();
-      applyScroll(scrollTo);
-    });
+  function showPeriodHeading(key) {
+    headingKey = key;
+    periodLabelEl.textContent = key ? periodLabel(key, tlMode) : '';
+    var count = key ? entriesIn(key).length : 0;
+    periodCountEl.textContent = count ? count + ' anı' : '';
+    dateRail.setAttribute('aria-valuenow', String(Math.max(0, tlPeriods.indexOf(key))));
+    dateRail.setAttribute('aria-valuetext', key ? periodLabel(key, tlMode) : '');
   }
 
-  // Bakılan tarih: hatırlanan tarih bu dönemdeyse o, değilse dönemin en yeni anısı
+  // Başlığı ve tarih çubuğunu kaydırma konumuna eşitle
+  function syncToScroll() {
+    var pos = scrollPosition();
+    tlKey = tlPeriods[pos.index] || null;
+    if (tlKey !== headingKey) showPeriodHeading(tlKey);
+    if (!railDrag) setRailThumb(pos.rail);
+  }
+
+  var scrollRaf = 0;
+  timelineScroller.addEventListener('scroll', function () {
+    if (scrollRaf) return;
+    scrollRaf = requestAnimationFrame(function () { scrollRaf = 0; syncToScroll(); });
+  }, { passive: true });
+
+  // Bir dönemin başına git (sürüklerken anında, klavyede yumuşak)
+  function scrollToPeriod(key, smooth) {
+    var el = periodEls[key];
+    if (!el) return;
+    var top = el.getBoundingClientRect().top - timelineScroller.getBoundingClientRect().top + timelineScroller.scrollTop - 8;
+    if (smooth && !reduced() && timelineScroller.scrollTo) timelineScroller.scrollTo({ top: top, behavior: 'smooth' });
+    else timelineScroller.scrollTop = top;
+  }
+
+  // Bakılan tarih: dönemin en yeni anısı (yoksa dönemin kendisi)
   function anchorDate() {
-    if (tlAnchor && periodKeyOf(tlAnchor, tlMode) === tlKey) return tlAnchor;
+    if (!tlKey) return new Date();
     var shown = entriesIn(tlKey);
     if (shown.length) return shown[0].date;
     return tlKey === currentKey() ? new Date() : parseDateValue(tlKey);
   }
-
-  // İçeriği değiştir: eskisi kayarak/solarak çıkar, yenisi girer
-  function swapTimeline(dir, change) {
-    if (reduced() || typeof timelineList.animate !== 'function') { change(); return; }
-    tlBusy = true;
-    var shift = dir === 'older' ? -24 : dir === 'newer' ? 24 : 0;
-    var start = timelineList.style.transform || 'translateY(0px)';
-    timelineList.style.transform = '';
-    var out = timelineList.animate(
-      [{ opacity: 1, transform: start }, { opacity: 0, transform: 'translateY(' + shift + 'px)' }],
-      { duration: 150, easing: 'cubic-bezier(0.4, 0, 1, 1)', fill: 'forwards' });
-    out.onfinish = function () {
-      change();
-      out.cancel();
-      var inn = timelineList.animate(
-        [{ opacity: 0, transform: 'translateY(' + (-shift) + 'px)' }, { opacity: 1, transform: 'translateY(0px)' }],
-        { duration: 280, easing: EASE });
-      inn.onfinish = inn.oncancel = function () { tlBusy = false; };
-    };
-    out.oncancel = function () { tlBusy = false; };
-  }
-
-  /* ---- Dönem sonunda kaydırmaya devam → önceki/sonraki dönem ---- */
-
-  function atBottom() { return timelineScroller.scrollTop + timelineScroller.clientHeight >= timelineScroller.scrollHeight - 2; }
-  function atTop() { return timelineScroller.scrollTop <= 1; }
-
-  function setPull(dir, p) {
-    [[pullOlder, 'older'], [pullNewer, 'newer']].forEach(function (pair) {
-      var active = pair[1] === dir;
-      pair[0].style.setProperty('--pull', active ? p : 0);
-      pair[0].classList.toggle('is-ready', active && p >= 1);
-    });
-    // Hafif "lastik" geri bildirimi
-    timelineList.style.transform = (dir && !reduced()) ? 'translateY(' + ((dir === 'older' ? -1 : 1) * p * 18) + 'px)' : '';
-  }
-
-  var wheelPull = { dir: null, amount: 0, timer: null };
-
-  function resetPull() {
-    clearTimeout(wheelPull.timer);
-    wheelPull.dir = null;
-    wheelPull.amount = 0;
-    setPull(null, 0);
-  }
-
-  function triggerPull(dir) {
-    var key = neighbor(dir);
-    if (!key) { resetPull(); return; }
-    goToPeriod(key, { direction: dir, scroll: dir === 'older' ? 'top' : 'bottom' });
-  }
-
-  timelineScroller.addEventListener('wheel', function (e) {
-    if (e.ctrlKey) return;
-    if (tlBusy) { e.preventDefault(); return; }
-    var dy = e.deltaY * (e.deltaMode === 1 ? 16 : e.deltaMode === 2 ? timelineScroller.clientHeight : 1);
-    var dir = (dy > 0 && atBottom() && neighbor('older')) ? 'older'
-      : (dy < 0 && atTop() && neighbor('newer')) ? 'newer' : null;
-    if (!dir) { if (wheelPull.dir) resetPull(); return; }
-
-    e.preventDefault(); // sayfa kaymasın, dönem değişsin
-    if (Date.now() < tlCooldownUntil) return; // ivmeli kaydırma birden çok dönem atlamasın
-    if (wheelPull.dir !== dir) { wheelPull.dir = dir; wheelPull.amount = 0; }
-    wheelPull.amount += Math.abs(dy);
-    var p = Math.min(1, wheelPull.amount / PULL_WHEEL);
-    setPull(dir, p);
-    clearTimeout(wheelPull.timer);
-    if (p >= 1) { triggerPull(dir); return; }
-    wheelPull.timer = setTimeout(resetPull, 450);
-  }, { passive: false });
-
-  var touchPull = null;
-
-  timelineScroller.addEventListener('touchstart', function (e) {
-    touchPull = e.touches.length === 1 ? { y: e.touches[0].clientY, dir: null, startY: 0, amount: 0 } : null;
-  }, { passive: true });
-
-  timelineScroller.addEventListener('touchmove', function (e) {
-    var tp = touchPull;
-    if (!tp || tlBusy || e.touches.length !== 1) return;
-    var y = e.touches[0].clientY;
-    if (!tp.dir) {
-      if (y < tp.y - 2 && atBottom() && neighbor('older')) { tp.dir = 'older'; tp.startY = y; }
-      else if (y > tp.y + 2 && atTop() && neighbor('newer')) { tp.dir = 'newer'; tp.startY = y; }
-      else { tp.y = y; return; }
-    }
-    var amount = tp.dir === 'older' ? tp.startY - y : y - tp.startY;
-    if (amount < 0) { tp.dir = null; tp.y = y; resetPull(); return; }
-    if (e.cancelable) e.preventDefault();
-    tp.amount = amount;
-    setPull(tp.dir, Math.min(1, amount / PULL_TOUCH));
-  }, { passive: false });
-
-  timelineScroller.addEventListener('touchend', function () {
-    var tp = touchPull;
-    touchPull = null;
-    if (!tp || !tp.dir) return;
-    if (tp.amount >= PULL_TOUCH && Date.now() >= tlCooldownUntil) triggerPull(tp.dir);
-    else resetPull();
-  });
-
-  timelineScroller.addEventListener('touchcancel', function () { touchPull = null; resetPull(); });
-
-  pullOlder.addEventListener('click', function () { triggerPull('older'); });
-  pullNewer.addEventListener('click', function () { triggerPull('newer'); });
 
   /* ---- Kenar tarih çubuğu ---- */
 
@@ -1790,13 +2121,13 @@
     return clamp(Math.round(t * (n - 1)), 0, n - 1);
   }
 
+  // i ondalıklı olabilir: kaydırdıkça dönemler arasında akıcı ilerler
   function setRailThumb(i) {
-    railThumb.style.transform = 'translateY(' + railY(i, tlPeriods.length) + 'px)';
+    railThumb.style.transform = 'translateY(' + railY(clamp(i, 0, Math.max(0, tlPeriods.length - 1)), tlPeriods.length) + 'px)';
   }
 
   function updateRail() {
     var n = tlPeriods.length;
-    var idx = Math.max(0, tlPeriods.indexOf(tlKey));
     var html = '';
     var lastYear = null;
     tlPeriods.forEach(function (k, i) {
@@ -1809,17 +2140,16 @@
       lastYear = year;
     });
     railTicks.innerHTML = html;
-    setRailThumb(idx);
 
     dateRail.setAttribute('aria-valuemin', '0');
     dateRail.setAttribute('aria-valuemax', String(Math.max(0, n - 1)));
-    dateRail.setAttribute('aria-valuenow', String(idx));
-    dateRail.setAttribute('aria-valuetext', periodLabel(tlKey, tlMode));
     dateRail.classList.toggle('is-disabled', n <= 1);
+    if (n) syncToScroll();
   }
 
   var railDrag = null;
 
+  // Sürüklerken: balon dönemi gösterir, liste anında o döneme kayar
   function railPreview(clientY) {
     var i = railIndexAt(clientY);
     railDrag.index = i;
@@ -1827,24 +2157,23 @@
     railBubble.textContent = periodLabel(tlPeriods[i], tlMode);
     railBubble.style.transform = 'translateY(' + railY(i, tlPeriods.length) + 'px)';
     railBubble.hidden = false;
+    if (railDrag.shown !== i) { railDrag.shown = i; scrollToPeriod(tlPeriods[i], false); }
   }
 
-  function endRailDrag(e, commitJump) {
+  function endRailDrag(e) {
     if (!railDrag || e.pointerId !== railDrag.id) return;
-    var idx = railDrag.index;
     railDrag = null;
     dateRail.classList.remove('is-dragging');
     railBubble.hidden = true;
-    if (commitJump) goToPeriod(tlPeriods[idx], { scroll: 'top' });
-    else updateRail();
+    syncToScroll();
   }
 
   dateRail.addEventListener('pointerdown', function (e) {
-    if (tlPeriods.length <= 1 || tlBusy) return;
+    if (tlPeriods.length <= 1) return;
     if (e.pointerType === 'mouse' && e.button !== 0) return;
     e.preventDefault();
     try { dateRail.setPointerCapture(e.pointerId); } catch (err) { /* desteklenmiyorsa sorun değil */ }
-    railDrag = { id: e.pointerId, index: tlPeriods.indexOf(tlKey) };
+    railDrag = { id: e.pointerId, index: tlPeriods.indexOf(tlKey), shown: -1 };
     dateRail.classList.add('is-dragging');
     dateRail.focus({ preventScroll: true });
     railPreview(e.clientY);
@@ -1854,12 +2183,12 @@
     if (railDrag && e.pointerId === railDrag.id) railPreview(e.clientY);
   });
 
-  dateRail.addEventListener('pointerup', function (e) { endRailDrag(e, true); });
-  dateRail.addEventListener('pointercancel', function (e) { endRailDrag(e, false); });
+  dateRail.addEventListener('pointerup', endRailDrag);
+  dateRail.addEventListener('pointercancel', endRailDrag);
 
   // Klavye: ↑/↓ bir dönem, Home/End en yeni/en eski
   dateRail.addEventListener('keydown', function (e) {
-    var i = tlPeriods.indexOf(tlKey), n = tlPeriods.length, t;
+    var i = Math.max(0, tlPeriods.indexOf(tlKey)), n = tlPeriods.length, t;
     if (e.key === 'ArrowDown' || e.key === 'PageDown') t = i + 1;
     else if (e.key === 'ArrowUp' || e.key === 'PageUp') t = i - 1;
     else if (e.key === 'Home') t = 0;
@@ -1867,7 +2196,7 @@
     else return;
     e.preventDefault();
     t = clamp(t, 0, n - 1);
-    if (t !== i) goToPeriod(tlPeriods[t], { scroll: 'top' });
+    if (t !== i) scrollToPeriod(tlPeriods[t], true);
   });
 
   window.addEventListener('resize', updateRail);
@@ -1875,25 +2204,20 @@
   /* ---- Haftalık / Aylık / Yıllık ---- */
 
   function setMode(mode) {
-    if (mode === tlMode || tlBusy) return;
+    if (mode === tlMode) return;
     // Şu an bakılan yeri koru (Aylık → Yıllık → Haftalık geçişlerinde aynı tarih)
     var anchor = anchorDate();
-
     modeButtons.forEach(function (b) { b.setAttribute('aria-pressed', String(b.dataset.mode === mode)); });
 
-    swapTimeline(null, function () {
-      tlMode = mode;
-      computePeriods();
-      var key = periodKeyOf(anchor, mode);
-      if (tlPeriods.indexOf(key) === -1) {
-        // O dönemde anı yoksa en yakın eski döneme git
-        key = tlPeriods.filter(function (k) { return k <= key; })[0] || tlPeriods[tlPeriods.length - 1];
-      }
-      tlKey = key;
-      tlAnchor = periodKeyOf(anchor, mode) === key ? anchor : null;
-      renderTimeline();
-      applyScroll('top');
-    });
+    tlMode = mode;
+    renderTimeline();
+    var key = periodKeyOf(anchor, mode);
+    if (!periodEls[key]) key = tlPeriods.filter(function (k) { return k <= key; })[0] || tlPeriods[tlPeriods.length - 1];
+    if (key === tlPeriods[0]) timelineScroller.scrollTop = 0; else scrollToPeriod(key, false);
+    syncToScroll();
+    if (!reduced() && timelineList.animate) {
+      timelineList.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' });
+    }
   }
 
   modeButtons.forEach(function (b) {
@@ -1902,37 +2226,74 @@
 
   /* ---- Anı penceresini aç ---- */
 
-  // Karta (fotoğrafa ya da metne) dokununca tam not anı penceresinde açılır
+  // Çizelgedeki anılar, lightbox'ın gezebileceği listeye (çizelgedeki sırayla)
+  function timelineLbItems() {
+    return toArray(timelineList.querySelectorAll('.timeline-item[data-entry-key]')).map(function (li) {
+      var key = li.dataset.entryKey;
+      var en = findEntry(key) || {};
+      var media = en.media && en.media.src ? en.media : null;
+      return {
+        key: key,
+        dataset: { mediaType: media ? media.type : '', mediaSrc: media ? media.src : '', caption: en.title || '', memoryId: en.memoryId || '' },
+        // Kapanış animasyonu için etiketin küçük fotoğrafı (liste yeniden çizilmiş olabilir)
+        thumb: function () { return timelineList.querySelector('.timeline-item[data-entry-key="' + key + '"] .timeline-media'); }
+      };
+    });
+  }
+
+  // Etikete dokununca: polaroid tam ekran görünümü (çizelgeye özgü "günlük" farklarıyla)
   timelineList.addEventListener('click', function (e) {
     var card = e.target.closest('.timeline-card');
     if (!card) return;
-    var btn = card.querySelector('.timeline-media'); // büyüme animasyonu fotoğraftan başlar
-    var entry = findEntry(card.closest('.timeline-item').dataset.entryKey);
-    if (entry) openMemory(entry, btn);
+    var key = card.closest('.timeline-item').dataset.entryKey;
+    lbItems = timelineLbItems();
+    var index = -1;
+    lbItems.forEach(function (it, i) { if (it.key === key) index = i; });
+    openLightbox(index, card.querySelector('.timeline-media'), 'timeline');
   });
+
+  // Listeyi yeniden çiz; kullanıcının baktığı yer (dönem + kaydırma payı) korunsun
+  function rerenderKeepingPlace() {
+    var key = tlKey;
+    var el = key && periodEls[key];
+    var offset = el ? el.getBoundingClientRect().top - timelineScroller.getBoundingClientRect().top : 0;
+    var wasTop = timelineScroller.scrollTop <= 1;
+    renderTimeline();
+    if (wasTop || !periodEls[key]) { timelineScroller.scrollTop = 0; syncToScroll(); return; }
+    timelineScroller.scrollTop += periodEls[key].getBoundingClientRect().top - timelineScroller.getBoundingClientRect().top - offset;
+    syncToScroll();
+  }
+
+  // Bir anının dönemine kaydır (yeni eklenen / tarihi değişen anı görünsün)
+  function revealEntryPeriod(entry) {
+    var key = periodKeyOf(entry.date, tlMode);
+    if (key === tlPeriods[0]) timelineScroller.scrollTop = 0; else scrollToPeriod(key, false);
+    syncToScroll();
+  }
 
   // Supabase anılarını zaman çizelgesine koy (örnekler kalır)
   function setTimelineMemories(rows) {
     tlEntries = tlEntries.filter(function (e) { return !e.memoryId; });
     rows.forEach(function (row) { tlEntries.push(entryFromRow(row)); });
-    renderTimeline();
+    rerenderKeepingPlace();
   }
 
   function addTimelineMemory(row) {
     var entry = entryFromRow(row);
     tlEntries.push(entry);
-    tlKey = periodKeyOf(entry.date, tlMode); // yeni anının dönemine geç
-    tlAnchor = entry.date;
     renderTimeline();
+    revealEntryPeriod(entry); // yeni anının dönemine git
   }
 
   // Bir anı düzenlenince: galeri başlığı ve çizelgedeki kart güncellensin
-  var timelineDirty = false;
+  var timelineDirty = null;   // pencere kapanınca gösterilecek anı (tarihi değiştiyse)
 
   function flushTimeline() {
     if (!timelineDirty) return;
-    timelineDirty = false;
+    var entry = timelineDirty;
+    timelineDirty = null;
     renderTimeline();
+    revealEntryPeriod(entry);
   }
 
   function afterMemoryChanged(entry) {
@@ -1945,17 +2306,15 @@
     if (li) {
       li.querySelector('.timeline-title').textContent = entry.title;
       li.querySelector('.timeline-date').textContent = entry.dateText;
-      li.querySelector('.timeline-desc').textContent = entry.desc || '';
+      li.querySelector('.tl-tag').setAttribute('aria-label', entry.title + ', ' + entry.dateText + ' — anıyı aç');
     }
 
-    // Tarih başka döneme taşındıysa çizelge o döneme geçsin
-    var key = periodKeyOf(entry.date, tlMode);
-    if (key !== tlKey || !li) {
-      tlKey = key;
-      tlAnchor = entry.date;
+    // Tarih başka döneme taşındıysa anı yeni yerine geçsin, liste oraya kaysın
+    var period = li && li.closest('.timeline-period');
+    if (!li || !period || period.dataset.period !== periodKeyOf(entry.date, tlMode)) {
       // Anı penceresi çizelgeden açıldıysa, kapanış animasyonu bitince yenile
-      if (activeDialog && activeDialog.el === memoryModal) timelineDirty = true;
-      else renderTimeline();
+      if (activeDialog && activeDialog.el === memoryModal) timelineDirty = entry;
+      else { renderTimeline(); revealEntryPeriod(entry); }
     }
   }
 
@@ -1964,14 +2323,13 @@
     var item = galleryGrid.querySelector('.gallery-item[data-memory-id="' + entry.memoryId + '"]');
     if (item) { unobservePreviews(item); item.remove(); }
     refreshGalleryItems();
-    renderTimeline();
+    rerenderKeepingPlace();
     toast(entry.fileRemoveFailed
-      ? 'Anı silindi, ama dosyası depodan silinemedi (supabase/schema.sql\'i tekrar çalıştır).'
+      ? 'Anı silindi, ama fotoğrafı/videosu depodan silinemedi. supabase/fix-delete.sql dosyasını Supabase\'de bir kez çalıştır.'
       : 'Anı silindi.');
   }
 
   parseSeed();
-  tlKey = currentKey();
   renderTimeline();
 
   /* =========================================================
@@ -2012,6 +2370,453 @@
 
   function setAuthState(state) { rootEl.setAttribute('data-auth', state); }
 
+  /* ---- Açılış sahnesi (pixel art) ----
+     Uygulama her açıldığında oynar; bu sırada oturum kontrol edilir, anılar çekilir
+     ve fotoğraflar arka planda tamamen yüklenir (decode). Sahne:
+       1) Zeynep durakta oturuyor  2) Efe yürüyerek gelir, Zeynep kalkar
+       3) Efe sırtında sakladığı pembe laleyi uzatır
+       4) Zeynep alır: yanaklar pembe, başının üstünde atan kalp
+       5) Birlikte yürüyüp uzaklaşırlar  6) Kamera gökyüzüne kayar,
+          "Dijital Albümüne Hoş Geldin"  7) İçerik hazırsa uygulama açılır
+     Atlanamaz: dokunma ya da tuş sahneyi kesmez, kendi akışıyla oynayıp biter
+     (yanlışlıkla dokunulunca kesilmesin). Hareketi azalt: sadece "Hoş Geldin" yazısı solarak belirir.
+     Sahne 160×128'lik (ekran oranına göre genişleyen) küçük bir tuvale çizilir,
+     CSS ile keskin pikselli büyütülür: hafif ve hızlı. */
+  var splash = document.getElementById('splash');
+  var introCanvas = document.getElementById('introCanvas');
+  var introCtx = introCanvas && introCanvas.getContext ? introCanvas.getContext('2d') : null;
+  var SPLASH_MAX_MS = 12000;   // içerik en fazla bu kadar beklenir (yavaş ağ)
+  var INTRO_TITLE_AT = 7.0;    // saniye: "Hoş Geldin" belirir
+  var INTRO_END = 7.6;         // saniye: sahne biter
+  var INTRO_HOLD = 0.9;        // yazı en az bu kadar görünsün
+  var SCENE_W = 160, SCENE_H = 128;
+  var iW = SCENE_W, iH = SCENE_H, iOX = 0, iOY = 0;
+  var introRaf = 0, introStart = 0, introTimer = null, introToken = 0;
+  var introAnimDone = true, introContentReady = true, introVisible = false;
+
+  var PAL = {
+    skyTop: '#EFD3DA', skyMid: '#E6E1EF', sky: '#DCE6EE', cloud: '#F7F4F6', sparkle: '#FFFFFF',
+    walk: '#D8D4CC', walkLine: '#C7C2B8', curb: '#B3AEA5', road: '#8F9399', roadLine: '#E9E4D8',
+    roof: '#4F5761', frame: '#6B737D', glass: 'rgba(214, 228, 236, 0.78)', bench: '#7A5C44', signBlue: '#3E78AD', white: '#FFFFFF',
+    wallA: '#EADFC9', wallB: '#E3C6C0', wallC: '#D6D3CD', trim: '#B9AE9C', roofLine: '#8C7F6E', win: '#A7BBC6', winFrame: '#F6F2EA', door: '#5B4636',
+    awningA: '#F4EEE6', awningB: '#D99AA6', cafeSign: '#6E5444', cup: '#F6F2EA',
+    atm: '#8C949C', atmDark: '#5E666E', atmScreen: '#7FB6DE', bankBand: '#3E5E86',
+    cartRed: '#C2554A', cartDark: '#8E3B33', cartGlass: 'rgba(240, 240, 236, 0.85)', simit: '#B5793F', wheel: '#3A3A3A',
+    crate: '#9C7652', bucket: '#9AA3AB', leaf: '#5C9E57', fl1: '#EE8FB0', fl2: '#F2C94C', fl3: '#E2574C', fl4: '#FFFFFF',
+    sea: '#A9C2CE', seaHi: '#C9DAE2', shore: '#BAC4CC', ferry: '#F2F0EA', ferryDark: '#5A6470', gull: '#6D6D6D', stone: '#BDB5A6',
+    skin: '#F1C7A5', eye: '#2B2B2B', blush: '#F29BAA', mouth: '#B85A6A',
+    tulip: '#EE8FB0', tulipDark: '#D46A92', stem: '#5C9E57', heart: '#E57A95'
+  };
+  var EFE = { legH: 11, torsoH: 10, hair: '#8A5A3B', hairLong: false, top: '#1E1E1E', topDark: '#3B3B3B', sleeve: 3, pants: '#3D5F95', shoes: '#FFFFFF', shoeEdge: '#C9C9C9' };
+  var ZEYNEP = { legH: 8, torsoH: 8, hair: '#E8C872', hairLong: true, top: '#EFE3CC', topDark: '#DDCDAF', pants: '#222226', shoes: '#FFFFFF', shoeEdge: '#C9C9C9' };
+  var HEART_PX = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
+
+  function cpx(x, y, w, h, col) { introCtx.fillStyle = col; introCtx.fillRect(Math.round(x), Math.round(y), w, h); }
+  function easeOut(p) { return 1 - Math.pow(1 - p, 3); }
+  function easeInOut(p) { return p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2; }
+  function seg(t, a, b) { return clamp((t - a) / (b - a), 0, 1); }
+  function lerp(a, b, p) { return a + (b - a) * p; }
+
+  function drawPattern(rows, x, y, col) {
+    introCtx.fillStyle = col;
+    rows.forEach(function (row, j) {
+      for (var i = 0; i < row.length; i++) if (row[i] === 'X') introCtx.fillRect(Math.round(x + i), Math.round(y + j), 1, 1);
+    });
+  }
+
+  // Lale: sap normalden uzun (elde tutulduğu için); (x, y) sapın alt ucu
+  function drawTulip(x, y) {
+    x = Math.round(x); y = Math.round(y);
+    cpx(x, y - 11, 1, 11, PAL.stem);
+    cpx(x + 1, y - 6, 2, 1, PAL.stem);
+    cpx(x + 2, y - 7, 1, 1, PAL.stem);
+    cpx(x - 1, y - 15, 4, 3, PAL.tulip);
+    cpx(x - 1, y - 15, 1, 3, PAL.tulipDark);
+    cpx(x - 1, y - 16, 1, 1, PAL.tulip);
+    cpx(x + 2, y - 16, 1, 1, PAL.tulip);
+    cpx(x, y - 12, 2, 1, PAL.tulipDark);
+  }
+
+  // Önden görünüşlü sevimli karakter. pose: { walk: 0|1|2, sit, look (-1|0|1), arm ('down'|'fwd'|'hidden'), dir (1 sağ, -1 sol), blush, smile }
+  function drawPerson(P, x, fy, pose) {
+    x = Math.round(x); fy = Math.round(fy);
+    var top, hipY;
+    if (pose.sit) {
+      hipY = 94;
+      cpx(x, hipY - 1, 8, 3, P.pants);
+      cpx(x, hipY + 2, 3, fy - hipY - 4, P.pants);
+      cpx(x + 5, hipY + 2, 3, fy - hipY - 4, P.pants);
+      cpx(x, fy - 2, 3, 2, P.shoes); cpx(x + 5, fy - 2, 3, 2, P.shoes);
+      cpx(x, fy - 1, 3, 1, P.shoeEdge); cpx(x + 5, fy - 1, 3, 1, P.shoeEdge);
+    } else {
+      hipY = fy - P.legH;
+      var l = pose.walk === 1 ? 1 : 0, r = pose.walk === 2 ? 1 : 0;
+      cpx(x, hipY, 3, P.legH - 2 - l, P.pants);
+      cpx(x + 5, hipY, 3, P.legH - 2 - r, P.pants);
+      cpx(x - l, fy - 2 - l, 3, 2, P.shoes); cpx(x + 5 + r, fy - 2 - r, 3, 2, P.shoes);
+      cpx(x - l, fy - 1 - l, 3, 1, P.shoeEdge); cpx(x + 5 + r, fy - 1 - r, 3, 1, P.shoeEdge);
+      cpx(x + 3, hipY, 2, 2, P.pants);
+    }
+    top = hipY - P.torsoH;
+    cpx(x - 1, top, 10, P.torsoH, P.top);
+    if (P === EFE) { cpx(x + 2, top, 2, 1, P.topDark); cpx(x + 4, top, 2, 1, P.topDark); cpx(x + 4, top + 1, 1, 3, P.topDark); } // polo yaka
+    else { cpx(x - 1, hipY - 1, 10, 1, P.topDark); }                                                                         // kazak lastiği
+    var d = pose.dir || 1;
+    var fwdSide = d > 0 ? x + 9 : x - 3;
+    var backSide = d > 0 ? x - 3 : x + 9;
+    // Aşağı sarkan kol: uzun kolluysa bileğe kadar giysi + el; kısa kolluysa (P.sleeve) omuzda giysi, gerisi ten
+    function armDown(ax) {
+      if (P.sleeve) { cpx(ax, top + 1, 2, P.torsoH, PAL.skin); cpx(ax, top + 1, 2, P.sleeve, P.top); }
+      else { cpx(ax, top + 1, 2, P.torsoH - 2, P.top); cpx(ax, top + P.torsoH - 1, 2, 2, PAL.skin); }
+    }
+    armDown(backSide + (d > 0 ? 1 : 0));
+    if (pose.arm === 'fwd') {
+      // öne uzatılmış kol (lale verirken)
+      if (P.sleeve) {
+        cpx(d > 0 ? x + 9 : x - 7, top + 3, 7, 2, PAL.skin);
+        cpx(d > 0 ? x + 9 : x - 2, top + 3, 2, 2, P.top);
+      } else {
+        cpx(d > 0 ? x + 9 : x - 5, top + 3, 5, 2, P.top);
+        cpx(d > 0 ? x + 14 : x - 7, top + 3, 2, 2, PAL.skin);
+      }
+    } else if (pose.arm !== 'hidden') {
+      armDown(fwdSide + (d > 0 ? 0 : 1));
+    }
+    var hy = top - 8;
+    cpx(x, hy, 8, 8, PAL.skin);
+    cpx(x - 1, hy - 1, 10, 3, P.hair);
+    if (P.hairLong) { cpx(x - 1, hy + 2, 2, 9, P.hair); cpx(x + 7, hy + 2, 2, 9, P.hair); }
+    else { cpx(x - 1, hy + 2, 1, 2, P.hair); cpx(x + 8, hy + 2, 1, 2, P.hair); cpx(x + 1, hy + 2, 2, 1, P.hair); }
+    var lk = pose.look || 0;
+    cpx(x + 2 + lk, hy + 4, 1, 1, PAL.eye);
+    cpx(x + 5 + lk, hy + 4, 1, 1, PAL.eye);
+    if (pose.blush) { cpx(x + 1, hy + 5, 1, 1, PAL.blush); cpx(x + 6, hy + 5, 1, 1, PAL.blush); }
+    if (pose.smile) { cpx(x + 3, hy + 6, 2, 1, PAL.mouth); }
+    // El: uzatılmışsa önde, değilse yanda (lale vücudun yanında, yüzü kapatmadan tutulur)
+    var sideX = fwdSide + (d > 0 ? 0 : 1);
+    return { hand: pose.arm === 'fwd' ? { x: d > 0 ? x + 15 : x - 6, y: top + 3 } : { x: sideX + (d > 0 ? 1 : 0), y: top + P.torsoH - 1 }, headTop: hy - 1, cx: x + 4 };
+  }
+
+  // Bir-iki katlı eski tip bina cephesi (x'ten itibaren w genişlik, üst kenarı top)
+  function drawBuilding(x, w, top, wall) {
+    cpx(x, top, w, 100 - top, wall);
+    cpx(x - 1, top - 2, w + 2, 2, PAL.roofLine);           // saçak
+    cpx(x, top + 2, w, 1, PAL.trim);                        // korniş
+    var floors = top < 60 ? 2 : 1;
+    for (var f = 0; f < floors; f++) {
+      var wy = top + 6 + f * 18;
+      for (var wx = x + 4; wx + 6 <= x + w - 2; wx += 11) {
+        cpx(wx - 1, wy - 1, 7, 10, PAL.winFrame);
+        cpx(wx, wy, 5, 8, PAL.win);
+        cpx(wx + 2, wy, 1, 8, PAL.winFrame);                // pencere kayıtı
+      }
+    }
+  }
+
+  // 3×5 piksel font: "BEŞİKTAŞ MEYDANI" tabelası için. Ş'nin çengeli bir alt,
+  // İ'nin noktası bir üst satıra çizilir.
+  var PIXEL_FONT = {
+    B: ['XX.', 'X.X', 'XX.', 'X.X', 'XX.'], E: ['XXX', 'X..', 'XX.', 'X..', 'XXX'], S: ['.XX', 'X..', '.X.', '..X', 'XX.'],
+    I: ['XXX', '.X.', '.X.', '.X.', 'XXX'], K: ['X.X', 'X.X', 'XX.', 'X.X', 'X.X'], T: ['XXX', '.X.', '.X.', '.X.', '.X.'],
+    A: ['.X.', 'X.X', 'XXX', 'X.X', 'X.X'], M: ['X...X', 'XX.XX', 'X.X.X', 'X...X', 'X...X'], Y: ['X.X', 'X.X', '.X.', '.X.', '.X.'],
+    D: ['XX.', 'X.X', 'X.X', 'X.X', 'XX.'], N: ['XX.', 'X.X', 'X.X', 'X.X', 'X.X']
+  };
+
+  function glyphOf(ch) { return PIXEL_FONT[ch === 'Ş' ? 'S' : ch === 'İ' ? 'I' : ch]; }
+
+  function pixelTextWidth(text) {
+    var w = 0;
+    for (var i = 0; i < text.length; i++) { var g = glyphOf(text[i]); w += (g ? g[0].length : 3) + 1; }
+    return w - 1;
+  }
+
+  function drawPixelText(text, x, y, col) {
+    var cx = x;
+    for (var i = 0; i < text.length; i++) {
+      var ch = text[i], g = glyphOf(ch);
+      if (g) drawPattern(g, cx, y, col);
+      if (ch === 'Ş') cpx(cx + 1, y + 5, 1, 1, col);   // çengel
+      if (ch === 'İ') cpx(cx + 1, y - 2, 1, 1, col);   // nokta
+      cx += (g ? g[0].length : 3) + 1;
+    }
+  }
+
+  // Durak çatısındaki isim levhası: "BEŞİKTAŞ / MEYDANI" (küçük, mavi zemin, beyaz yazı)
+  function drawStopSign(cx, roofY) {
+    var l1 = 'BEŞİKTAŞ', l2 = 'MEYDANI';
+    var w = Math.max(pixelTextWidth(l1), pixelTextWidth(l2)) + 4, h = 16, x = cx - Math.floor(w / 2), y = roofY - h - 2;
+    cpx(x + 3, y + h, 1, 2, PAL.frame); cpx(x + w - 4, y + h, 1, 2, PAL.frame);   // ayaklar
+    cpx(x, y, w, h, '#4D6C93');                                                    // yumuşak mavi levha
+    cpx(x, y + h - 1, w, 1, '#3B5577');
+    drawPixelText(l1, x + Math.round((w - pixelTextWidth(l1)) / 2), y + 3, PAL.white);
+    drawPixelText(l2, x + Math.round((w - pixelTextWidth(l2)) / 2), y + 10, PAL.white);
+  }
+
+  // Sahne yerleşimi (soldan sağa, 160 piksellik sahne genişliğinde):
+  //   deniz + vapur + martılar (sol kenar) · kafe binası (önünde çiçekçi ve simitçi) ·
+  //   bankamatikler · otobüs durağı (çatısında "Beşiktaş Meydanı" levhası) · binalar.
+  //   Tek kaldırım (durağın olduğu taraf), altında sadece cadde.
+  var SEA_END = 36;            // deniz bu x'e kadar (geniş ekranda sola doğru uzar)
+
+  function drawBackground(t) {
+    var skyTopY = -(iH + 150) - 10;
+    var g = introCtx.createLinearGradient(0, skyTopY, 0, 66);
+    g.addColorStop(0, PAL.skyTop); g.addColorStop(0.55, PAL.skyMid); g.addColorStop(1, PAL.sky);
+    introCtx.fillStyle = g;
+    introCtx.fillRect(-iOX, skyTopY, iW, 66 - skyTopY);
+    // bulutlar ve parıltılar (kamera yukarı kayınca görünür; dikey ekranda sokağın üstünü de süsler)
+    var span = iW + 40;
+    [[0.1, 0.12, 20], [0.6, 0.28, 28], [0.3, 0.45, 16], [0.8, 0.6, 22], [0.15, 0.74, 18], [0.55, 0.88, 24], [0.9, 0.95, 14]].forEach(function (c, i) {
+      var x = -iOX + ((c[0] * iW + t * (2 + i % 3)) % span) - 20;
+      var y = skyTopY + c[1] * (40 - skyTopY);
+      cpx(x, y, c[2], 3, PAL.cloud); cpx(x + 4, y - 2, c[2] - 10, 2, PAL.cloud);
+    });
+    for (var s = 0; s < 18; s++) {
+      if (Math.sin(t * 3 + s * 1.7) > 0.25) cpx(-iOX + (s * 41) % iW, skyTopY + 6 + (s * 29) % Math.max(20, iH + 100), 1, 1, PAL.sparkle);
+    }
+
+    // ---- deniz (sol): karşı kıyı, su, dalgalar, vapur, rıhtım ----
+    var seaL = -iOX, seaW = SEA_END - seaL;
+    for (var hx = seaL; hx < SEA_END; hx += 3) cpx(hx, 64 + Math.round(2 * Math.sin(hx / 9)), 3, 6, PAL.shore);
+    cpx(seaL, 70, seaW, 30, PAL.sea);
+    for (var wv = 0; wv < 8; wv++) {
+      var wx = seaL + ((wv * 17 + t * (4 + wv % 3)) % Math.max(seaW, 10));
+      cpx(wx, 73 + (wv % 4) * 6, 4, 1, PAL.seaHi);
+    }
+    // uzaktaki vapur: basit siluet, yavaşça süzülür
+    var fRange = Math.max(seaW - 14, 4);
+    var fx = seaL + 3 + (fRange / 2) * (1 + Math.sin(t * 0.3));
+    cpx(fx, 74, 10, 1, PAL.ferryDark); cpx(fx + 1, 72, 8, 2, PAL.ferry); cpx(fx + 3, 71, 4, 1, PAL.ferry);
+    cpx(fx + 5, 69, 1, 2, PAL.ferryDark);
+    // martılar: denizin üstünde ve biraz da binaların üstünde
+    [[0.2, 46, 0], [0.6, 40, 1.5], [0.9, 52, 3]].forEach(function (b, i) {
+      var bx = seaL + ((b[0] * (seaW + 50) + t * (6 + i * 2)) % (seaW + 50)) - 6;
+      var by = b[1] + Math.round(Math.sin(t * 3 + b[2]) * 1.5);
+      var flap = Math.floor(t * 4 + i) % 2;
+      cpx(bx, by + flap, 2, 1, PAL.gull); cpx(bx + 2, by + 1, 1, 1, PAL.gull); cpx(bx + 3, by + flap, 2, 1, PAL.gull);
+    });
+    // rıhtım kenarı + korkuluk
+    cpx(seaL, 97, seaW, 3, PAL.stone);
+    cpx(seaL, 91, seaW, 1, PAL.frame);
+    for (var px = Math.ceil(seaL / 6) * 6; px < SEA_END; px += 6) cpx(px, 91, 1, 6, PAL.frame);
+
+    // ---- binalar ----
+    // durağın arkası ve sağı (geniş ekranda sağa doğru tekrarlanır)
+    var walls = [PAL.wallC, PAL.wallB, PAL.wallA];
+    var tops = [52, 40, 56];
+    for (var bx2 = 106, k = 0; bx2 < iW - iOX; bx2 += 40, k++) drawBuilding(bx2, 40, tops[k % 3], walls[k % 3]);
+    // kafe binası (iki katlı, zemin katta kafe)
+    drawBuilding(SEA_END, 50, 38, PAL.wallA);
+    var cx0 = SEA_END;
+    cpx(cx0, 74, 50, 26, PAL.wallB);
+    for (var a = 0; a < 50; a += 6) { cpx(cx0 + a, 70, 3, 5, PAL.awningA); cpx(cx0 + a + 3, 70, 3, 5, PAL.awningB); } // çizgili tente
+    for (var a2 = 0; a2 < 50; a2 += 3) cpx(cx0 + a2, 75, 2, 1, PAL.awningB);
+    cpx(cx0 + 4, 79, 16, 14, PAL.win); cpx(cx0 + 4, 79, 16, 1, PAL.winFrame); cpx(cx0 + 12, 79, 1, 14, PAL.winFrame);
+    cpx(cx0 + 23, 80, 9, 20, PAL.door); cpx(cx0 + 30, 90, 1, 1, PAL.cup);
+    cpx(cx0 + 33, 79, 14, 14, PAL.win); cpx(cx0 + 33, 79, 14, 1, PAL.winFrame); cpx(cx0 + 40, 79, 1, 14, PAL.winFrame);
+    cpx(cx0 + 14, 62, 22, 6, PAL.cafeSign); cpx(cx0 + 23, 63, 4, 3, PAL.cup); cpx(cx0 + 27, 64, 1, 1, PAL.cup); // tabelada fincan
+    // banka: iki bankamatik (durağın solunda)
+    cpx(86, 70, 20, 30, PAL.wallC);
+    cpx(86, 70, 20, 4, PAL.bankBand); cpx(89, 71, 14, 1, PAL.white);
+    [88, 97].forEach(function (ax) {
+      cpx(ax, 79, 7, 21, PAL.atm); cpx(ax, 79, 7, 1, PAL.atmDark);
+      cpx(ax + 1, 81, 5, 4, PAL.atmScreen);
+      cpx(ax + 1, 87, 5, 3, PAL.atmDark);
+      cpx(ax + 2, 92, 3, 1, PAL.atmDark);
+    });
+    // otobüs durağı gölgeliği
+    cpx(108, 60, 50, 4, PAL.roof);
+    cpx(110, 64, 46, 30, PAL.glass);
+    cpx(110, 64, 1, 36, PAL.frame); cpx(155, 64, 1, 36, PAL.frame); cpx(110, 64, 46, 1, PAL.frame);
+    cpx(114, 92, 38, 2, PAL.bench); cpx(116, 94, 2, 6, PAL.bench); cpx(148, 94, 2, 6, PAL.bench);
+    drawStopSign(133, 60);
+
+    // ---- tek kaldırım + cadde (dikey ekranda geniş bir bulvar gibi aşağı uzar) ----
+    var bottom = iH - iOY + 4;
+    cpx(-iOX, 100, iW, 9, PAL.walk);
+    for (var w = Math.floor(-iOX / 16) * 16; w < iW - iOX; w += 16) cpx(w, 100, 1, 9, PAL.walkLine);
+    cpx(-iOX, 109, iW, 2, PAL.curb);
+    cpx(-iOX, 111, iW, Math.max(17, bottom - 111), PAL.road);
+    for (var ly = 123; ly < bottom - 4; ly += 22) {
+      for (var m = Math.floor(-iOX / 24) * 24; m < iW - iOX; m += 24) cpx(m + 4, ly, 12, 1, PAL.roadLine);
+    }
+
+    // ---- çiçekçi (kafenin önünde, solda) ----
+    cpx(38, 93, 17, 8, PAL.crate); cpx(38, 96, 17, 1, PAL.door);
+    [[40, PAL.fl1], [44, PAL.fl2], [48, PAL.fl3], [52, PAL.fl4]].forEach(function (f, i) {
+      cpx(f[0] - 1, 88, 4, 5, PAL.bucket);
+      cpx(f[0], 84, 1, 4, PAL.leaf); cpx(f[0] + 2, 85, 1, 3, PAL.leaf);
+      cpx(f[0] - 1, 82 + (i % 2), 2, 2, f[1]); cpx(f[0] + 1, 83 - (i % 2), 2, 2, f[1]);
+    });
+    // ---- simitçi arabası (kafenin önünde, sağda) ----
+    var sx = 59;
+    cpx(sx, 90, 22, 8, PAL.cartRed); cpx(sx, 97, 22, 1, PAL.cartDark);
+    cpx(sx + 2, 80, 18, 10, PAL.cartGlass); cpx(sx + 2, 80, 18, 1, PAL.cartDark); cpx(sx + 2, 80, 1, 10, PAL.cartDark); cpx(sx + 19, 80, 1, 10, PAL.cartDark);
+    [[4, 83], [9, 83], [14, 83], [6, 86], [11, 86]].forEach(function (p) {     // simitler (halka)
+      var x = sx + p[0], y = p[1];
+      cpx(x, y, 3, 1, PAL.simit); cpx(x, y + 2, 3, 1, PAL.simit); cpx(x, y + 1, 1, 1, PAL.simit); cpx(x + 2, y + 1, 1, 1, PAL.simit);
+    });
+    cpx(sx + 22, 88, 4, 1, PAL.cartDark);
+    cpx(sx + 5, 98, 4, 4, PAL.wheel); cpx(sx + 15, 98, 4, 4, PAL.wheel);
+  }
+
+  function drawIntro(t) {
+    var c = introCtx;
+    c.setTransform(1, 0, 0, 1, 0, 0);
+    c.clearRect(0, 0, iW, iH);
+    var cam = (iH - iOY + 150) * easeInOut(seg(t, 6.0, 7.4)); // kamera gökyüzüne kayar (sokak tamamen aşağıda kalır)
+    c.translate(iOX, iOY + Math.round(cam));
+    drawBackground(t);
+
+    var FOOT = 104, ZX = 128, EX = 111;
+    var outDist = iW - iOX - EX + 24;                       // ekranın sağından çıkana kadar
+    var together = seg(t, 5.0, 6.8);
+    var efeX = lerp(-iOX - 16, EX, easeOut(seg(t, 0.4, 2.4))) + together * outDist;
+    var zX = ZX + together * outDist;
+    var walking = (t > 0.4 && t < 2.3) || (t > 5.0 && t < 6.8);
+    var stepFrame = walking ? 1 + (Math.floor(t * 7) % 2) : 0;
+    var hasTulip = t >= 3.7, offering = t >= 2.9 && t < 3.7, happy = t >= 3.7;
+
+    var zPose = {
+      sit: t < 2.0, look: t > 0.8 && t < 5.0 ? -1 : (t >= 5.0 ? 1 : 0), dir: t >= 5.0 ? 1 : -1,
+      walk: (t > 5.0 && t < 6.8) ? 1 + ((Math.floor(t * 7) + 1) % 2) : 0,
+      arm: t >= 3.3 && t < 3.7 ? 'fwd' : 'down', blush: happy, smile: happy
+    };
+    var z = drawPerson(ZEYNEP, zX, FOOT, zPose);
+
+    if (t < 2.9) drawTulip(efeX - 1, FOOT - EFE.legH + 3);  // sırtında saklı: sadece ucu görünür
+    var e = drawPerson(EFE, efeX, FOOT, { walk: stepFrame, look: 1, dir: 1, arm: offering ? 'fwd' : (t < 2.9 ? 'hidden' : 'down') });
+
+    if (offering) {
+      var p = easeInOut(seg(t, 3.3, 3.7));
+      drawTulip(lerp(e.hand.x, z.hand.x, p), lerp(e.hand.y, z.hand.y, p) + 1);
+    } else if (hasTulip) {
+      drawTulip(z.hand.x, z.hand.y + 1);
+    }
+
+    var heartIn = seg(t, 3.75, 4.1), heartOut = 1 - seg(t, 5.6, 6.2);
+    if (heartIn > 0 && heartOut > 0) {
+      var s = (1 + 0.25 * Math.max(0, Math.sin((t - 3.75) * 7))) * heartIn * heartOut;
+      c.save();
+      c.translate(z.cx, z.headTop - 6);
+      c.scale(s, s);
+      drawPattern(HEART_PX, -3.5, -3, PAL.heart);
+      c.restore();
+    }
+  }
+
+  // Tuvali ekran oranına göre boyutlandır: dikeyde üstte daha çok gökyüzü,
+  // yatayda iki yana uzayan sokak. Sahne her zaman alt-ortada durur.
+  function sizeIntro() {
+    if (!introCtx) return;
+    var w = window.innerWidth || 390, h = window.innerHeight || 844;
+    var aspect = w / h;
+    if (aspect < SCENE_W / SCENE_H) { iW = SCENE_W; iH = Math.min(420, Math.round(SCENE_W / aspect)); }
+    else { iH = SCENE_H; iW = Math.min(480, Math.round(SCENE_H * aspect)); }
+    iOX = Math.round((iW - SCENE_W) / 2);
+    iOY = Math.round((iH - SCENE_H) * 0.72);               // dikeyde sokak alt kısımda, altında sadece cadde
+    introCanvas.width = iW;
+    introCanvas.height = iH;
+    introCtx.imageSmoothingEnabled = false;
+  }
+
+  function introFrame(now) {
+    if (!introVisible) return;
+    var t = (now - introStart) / 1000;
+    drawIntro(Math.min(t, INTRO_END));
+    if (t >= INTRO_TITLE_AT) splash.classList.add('show-title');
+    if (t >= INTRO_END + INTRO_HOLD && !introAnimDone) { introAnimDone = true; maybeFinishIntro(); }
+    if (t > INTRO_END + 30) introStart = now - INTRO_END * 1000; // sonda gökyüzü yaşamaya devam etsin
+    introRaf = requestAnimationFrame(introFrame);
+  }
+
+  // Sahne bitti ve içerik hazırsa uygulamaya geç; içerik hâlâ yükleniyorsa
+  // "Hoş Geldin" ekranında küçük bir "hazırlanıyor" notuyla bekle
+  function maybeFinishIntro() {
+    if (!introVisible) return;
+    splash.classList.toggle('is-waiting', introAnimDone && !introContentReady);
+    if (introAnimDone && introContentReady) finishIntro();
+  }
+
+  function finishIntro() {
+    var token = introToken;
+    var fonts = (document.fonts && document.fonts.ready) ? document.fonts.ready : Promise.resolve();
+    Promise.race([fonts, new Promise(function (r) { setTimeout(r, 1500); })]).then(function () {
+      if (token !== introToken || !introVisible) return;
+      introVisible = false;
+      clearTimeout(introTimer);
+      if (reduced() && splash.animate) {
+        // CSS geçişleri "hareketi azalt"ta kapalı: kısa solmayı burada yap
+        splash.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 350, easing: 'ease-out' });
+        setTimeout(function () { if (token === introToken) { splash.classList.add('is-hidden'); cancelAnimationFrame(introRaf); } }, 340);
+      } else {
+        splash.classList.add('is-hidden');
+        setTimeout(function () { if (token === introToken) cancelAnimationFrame(introRaf); }, 600);
+      }
+    });
+  }
+
+  function showSplash() {
+    if (!splash) return;
+    introToken++;
+    introVisible = true;
+    introAnimDone = false;
+    introContentReady = false;
+    cancelAnimationFrame(introRaf);
+    splash.classList.remove('is-hidden', 'show-title', 'is-waiting', 'is-reduced');
+    clearTimeout(introTimer);
+    introTimer = setTimeout(function () { introContentReady = true; maybeFinishIntro(); }, SPLASH_MAX_MS);
+
+    if (reduced() || !introCtx) {
+      // Hareketi azalt: hareketli sahne yok, "Hoş Geldin" kısa bir solmayla belirir
+      splash.classList.add('is-reduced', 'show-title');
+      var title = splash.querySelector('.intro-title');
+      if (title && title.animate) title.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 700, easing: 'ease-out' });
+      var token = introToken;
+      setTimeout(function () { if (token === introToken) { introAnimDone = true; maybeFinishIntro(); } }, 1400);
+      return;
+    }
+    sizeIntro();
+    introStart = performance.now();
+    introRaf = requestAnimationFrame(introFrame);
+  }
+
+  // İçerik hazır (anılar + fotoğraflar yüklendi, ya da giriş ekranı gösterilecek)
+  function hideSplash() {
+    if (!splash) return;
+    introContentReady = true;
+    maybeFinishIntro();
+  }
+
+  if (splash) {
+    window.addEventListener('resize', function () { if (introVisible && !splash.classList.contains('is-reduced')) sizeIntro(); });
+  }
+
+  // Bir fotoğraf indirilip çözülene ya da videonun ilk bilgileri gelene kadar bekle
+  function mediaReady(el) {
+    return new Promise(function (resolve) {
+      var isImg = el.tagName === 'IMG';
+      if (isImg ? el.complete : el.readyState >= 1) { resolve(); return; }
+      var done = function () { resolve(); };
+      el.addEventListener(isImg ? 'load' : 'loadedmetadata', done, { once: true });
+      el.addEventListener('error', done, { once: true });
+    }).then(function () {
+      // decode: fotoğraf ekrana çizilmeye hazır olsun (önbellekte, çözülmüş)
+      if (el.tagName === 'IMG' && el.naturalWidth && el.decode) return el.decode().catch(noop);
+    });
+  }
+
+  // Galeri ve zaman çizelgesindeki tüm fotoğraf/videoların hazır olmasını bekle
+  function waitForMedia(maxMs) {
+    var els = toArray(document.querySelectorAll('#galleryGrid img, #timelineList img, #galleryGrid video, #timelineList video'));
+    return Promise.race([
+      Promise.all(els.map(mediaReady)),
+      new Promise(function (r) { setTimeout(r, maxMs); })
+    ]);
+  }
+
+  showSplash(); // sayfa açılırken: oturum kontrolü sürüyor
+
   function columns() { return videoColumnMissing ? LEGACY_COLUMNS : MEMORY_COLUMNS; }
 
   function isMissingVideoColumn(err) {
@@ -2026,8 +2831,9 @@
       return 'Supabase kurulumu güncel değil: supabase/schema.sql dosyasını Supabase SQL Editor\'de (tekrar) çalıştır.';
     }
     if (msg === 'no-permission-update' || msg === 'no-permission-delete') {
-      return 'Bu anıyı ' + (msg === 'no-permission-update' ? 'düzenleme' : 'silme') +
-        ' izni yok. Başkasının eklediği anılar için supabase/schema.sql dosyasını Supabase SQL Editor\'de tekrar çalıştır.';
+      return msg === 'no-permission-delete'
+        ? 'Supabase bu anıyı silmeye izin vermedi (veritabanında eski kurallar kalmış). supabase/fix-delete.sql dosyasını Supabase SQL Editor\'de bir kez çalıştır, sonra tekrar dene.'
+        : 'Bu anıyı düzenleme izni yok. supabase/schema.sql dosyasını Supabase SQL Editor\'de tekrar çalıştır.';
     }
     // Giriş / hesap oluşturma hataları
     if (/invalid login credentials|invalid_credentials/i.test(msg + ' ' + code)) return 'E-posta ya da şifre hatalı.';
@@ -2075,6 +2881,7 @@
   function showLogin(message) {
     currentUser = null;
     loadToken++;
+    hideSplash();
     closeDialog(true);
     clearRenderedMemories();
     if (form) form.reset();
@@ -2097,6 +2904,7 @@
     if ((currentUser && currentUser.id === user.id) || checkingUserId === user.id) return;
 
     checkingUserId = user.id;
+    showSplash(); // giriş yapıldı: anılar ve fotoğraflar hazır olana kadar yükleme ekranı
     sb.rpc('is_member').then(function (res) {
       checkingUserId = null;
       if (res.error || res.data !== true) {
@@ -2111,11 +2919,14 @@
       resetAuthForm();
       setAuthState('in');
       updateRail(); // panel artık görünür: çubuk ölçülerini yenile
-      refreshMemories();
+      refreshMemories()
+        .then(function () { return waitForMedia(SPLASH_MAX_MS); })
+        .then(hideSplash, hideSplash);
     });
   }
 
   if (!sb) {
+    hideSplash();
     setAuthState('out');
     authStatus.textContent = 'Uygulama yapılandırılamadı. Sunucuyu "npm start" ile başlatıp http://localhost:8080 adresinden aç.';
     authSubmit.disabled = true;
@@ -2180,9 +2991,45 @@
   var settingsClose = document.getElementById('settingsClose');
   var settingsEmail = document.getElementById('settingsEmail');
 
+  /* ---- Alttan açılan pencereler (Ayarlar, Yeni Anı): yumuşak açılış / kapanış ----
+     Telefonda alttan kayarak gelir, masaüstünde hafifçe büyüyerek belirir;
+     arka plan solar. "Hareketi azalt" açıksa sadece solma. */
+  function sheetMotion(modal) {
+    var backdrop = modal.querySelector('.settings-backdrop');
+    var sheet = modal.querySelector('.settings-sheet');
+    function hiddenFrame() {
+      return window.matchMedia('(min-width: 700px)').matches
+        ? { opacity: 0, transform: 'translateY(16px) scale(0.96)' }
+        : { opacity: 1, transform: 'translateY(100%)' };
+    }
+    return {
+      animateOpen: function () {
+        if (reduced()) { anim(modal, modal, [{ opacity: 0 }, { opacity: 1 }], { duration: FADE_MS, easing: 'ease-out' }); return; }
+        anim(modal, backdrop, [{ opacity: 0 }, { opacity: 1 }], { duration: 360, easing: 'ease-out' });
+        anim(modal, sheet, [hiddenFrame(), { opacity: 1, transform: 'none' }], { duration: 440, easing: EASE });
+      },
+      animateClose: function (done) {
+        if (reduced()) {
+          onAllFinished([anim(modal, modal, [{ opacity: 1 }, { opacity: 0 }], { duration: FADE_MS, easing: 'ease-in', fill: 'forwards' })], done);
+          return;
+        }
+        var opts = { duration: 320, easing: EASE_IN_OUT, fill: 'forwards' };
+        onAllFinished([
+          anim(modal, backdrop, [{ opacity: 1 }, { opacity: 0 }], opts),
+          anim(modal, sheet, [{ opacity: 1, transform: 'none' }, hiddenFrame()], opts)
+        ], done);
+      }
+    };
+  }
+
+  function openSheetDialog(modal, opener, focusEl) {
+    var m = sheetMotion(modal);
+    openDialog(modal, opener, { initialFocus: focusEl, animateOpen: m.animateOpen, animateClose: m.animateClose });
+  }
+
   function openSettings(opener) {
     settingsEmail.textContent = currentUser ? currentUser.email : '';
-    openDialog(settingsModal, opener, { initialFocus: settingsClose });
+    openSheetDialog(settingsModal, opener, settingsClose);
   }
 
   toArray(document.querySelectorAll('[data-open-settings]')).forEach(function (link) {
@@ -2339,7 +3186,9 @@
       btn.dataset.mediaSrc = media.src;
     }
     btn.innerHTML = '<div class="gallery-media">' + thumbHTML(media) + '</div>';
-    galleryGrid.insertBefore(btn, galleryGrid.firstChild);
+    // En yeni anı en başta, ama "Anı ekle" kalp kartının hemen arkasında
+    var addCard = document.getElementById('galleryAdd');
+    galleryGrid.insertBefore(btn, addCard ? addCard.nextSibling : galleryGrid.firstChild);
   }
 
   /* =========================================================
@@ -2399,7 +3248,21 @@
 
   fillTodayDate();
   // Gece yarısını geçmişse güncelle: forma gidilince ve sayfaya geri dönülünce
-  toArray(document.querySelectorAll('a[href="#ani-ekle"]')).forEach(function (a) { a.addEventListener('click', fillTodayDate); });
+  /* ---- "Yeni Bir Anı" penceresi: galerideki kalpli karttan açılır ---- */
+  var addModal = document.getElementById('addModal');
+  var addClose = document.getElementById('addClose');
+  var galleryAdd = document.getElementById('galleryAdd');
+
+  function openAddMemory(opener) {
+    fillTodayDate();
+    openSheetDialog(addModal, opener, addClose);
+  }
+
+  if (galleryAdd) galleryAdd.addEventListener('click', function () { openAddMemory(galleryAdd); });
+  addClose.addEventListener('click', function () { closeDialog(); });
+  addModal.addEventListener('click', function (e) {
+    if (e.target === addModal || e.target.classList.contains('settings-backdrop')) closeDialog();
+  });
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') fillTodayDate(); });
 
   if (form) {
@@ -2465,7 +3328,10 @@
           addTimelineMemory(row);
           refreshGalleryItems();
           form.reset();
-          formStatus.textContent = 'Anı kaydedildi 🤍';
+          formStatus.textContent = '';
+          // Pencereyi kapat, kısa ve sade bir onay göster
+          if (activeDialog && activeDialog.el === addModal) closeDialog();
+          toast('Anı kaydedildi', { heart: true, ms: 1800 });
         })
         .catch(function (err) {
           // Anı kaydedilemediyse yüklenen dosya boşta kalmasın
