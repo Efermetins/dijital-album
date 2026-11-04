@@ -2,7 +2,7 @@
 <html lang="tr" data-auth="loading">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#FAFAF8" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0E0E0E" media="(prefers-color-scheme: dark)">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -142,17 +142,10 @@
       </div>
 
       <div class="timeline-body">
-        <!-- Tüm dönemler tek listede, en yeniden en eskiye serbestçe kaydırılır -->
-        <div class="timeline-scroller" id="timelineScroller" tabindex="0" aria-label="Anılar (en yeniden en eskiye)">
+        <!-- Tüm dönemler tek listede, en yeniden en eskiye; normal sayfa kaydırmasıyla akar -->
+        <div class="timeline-scroller" id="timelineScroller" aria-label="Anılar (en yeniden en eskiye)">
           <div class="timeline-list" id="timelineList"></div>
           <p class="timeline-empty" id="timelineEmpty" hidden>Henüz anı yok. Galerideki kalpli karta dokunup ilk anını ekle.</p>
-        </div>
-
-        <div class="date-rail" id="dateRail" role="slider" tabindex="0" aria-orientation="vertical" aria-label="Tarih çubuğu: sürükleyerek döneme git">
-          <div class="date-rail-track" aria-hidden="true"></div>
-          <div class="date-rail-ticks" id="dateRailTicks" aria-hidden="true"></div>
-          <div class="date-rail-thumb" id="dateRailThumb" aria-hidden="true"></div>
-          <div class="date-rail-bubble" id="dateRailBubble" aria-hidden="true" hidden></div>
         </div>
       </div>
     </div>

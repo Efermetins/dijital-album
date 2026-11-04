@@ -773,14 +773,14 @@ section { padding: 4.5rem 1.25rem; }
 .note-btn:focus-visible { outline: 2px solid #FFFFFF; outline-offset: 3px; }
 
 
-/* ---------- ZAMAN ÇİZELGESİ PANELİ (dönem görünümü + kenar tarih çubuğu) ---------- */
+/* ---------- ANI CETVELİ PANELİ (dönem görünümü) ----------
+   Liste normal sayfa kaydırmasıyla akar (iç kaydırma kutusu yok); araç çubuğu
+   (dönem adı + Haftalık/Aylık/Yıllık) kaydırırken üstte sabit kalır. */
 
 .timeline-panel {
-  --rail-x: 30px;               /* tarih çubuğunun sütun içindeki yatay konumu */
   background: color-mix(in srgb, var(--card) 55%, transparent);
   border: 1px solid var(--glass-border);
   border-radius: 28px;
-  overflow: hidden;
   box-shadow: 0 24px 50px -36px var(--shadow-lift);
 }
 
@@ -794,6 +794,14 @@ section { padding: 4.5rem 1.25rem; }
   gap: 0.75rem;
   padding: 0.9rem 1rem 0.85rem 1.25rem;
   border-bottom: 1px solid var(--hairline);
+  /* kaydırırken üstte sabit */
+  position: sticky;
+  top: calc(var(--header-h) + env(safe-area-inset-top, 0px));
+  z-index: 4;
+  border-radius: 28px 28px 0 0;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
 }
 
 .period-heading {
@@ -860,36 +868,7 @@ section { padding: 4.5rem 1.25rem; }
   color: var(--on-ink);
 }
 
-.timeline-body {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 52px;
-}
-
-/* Serbest, kesintisiz kaydırma: hiçbir noktada yakalama (snap) ya da yavaşlama yok */
-.timeline-scroller {
-  position: relative;
-  height: 68vh;
-  height: min(68svh, 46rem);
-  min-height: 22rem;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
-  scroll-snap-type: none;
-  scroll-behavior: auto;
-  overscroll-behavior-y: contain;
-  padding: 1.25rem 0.25rem 1.25rem 1rem;
-}
-
-/* Tarayıcının kendi kaydırma çubuğunu gizle (kaydırma çalışmaya devam eder).
-   Sağdaki özel tarih çubuğu (.date-rail) bundan etkilenmez. */
-.timeline-scroller {
-  scrollbar-width: none;        /* Firefox */
-  -ms-overflow-style: none;     /* eski Edge */
-}
-
-.timeline-scroller::-webkit-scrollbar { display: none; width: 0; height: 0; } /* Chrome, Safari */
-
-.timeline-scroller:focus-visible { outline-offset: -3px; }
+.timeline-scroller { padding: 1.25rem 1rem 1.5rem; }
 
 .timeline-list { position: relative; }
 
@@ -937,101 +916,6 @@ section { padding: 4.5rem 1.25rem; }
   text-align: center;
   color: var(--ink-soft);
   font-size: 0.95rem;
-}
-
-/* Kenar tarih çubuğu */
-.date-rail {
-  position: relative;
-  touch-action: none;         /* sürüklerken sayfa kaymasın */
-  cursor: grab;
-  -webkit-user-select: none;
-  user-select: none;
-  outline: none;
-}
-
-.date-rail.is-dragging { cursor: grabbing; }
-.date-rail.is-disabled { cursor: default; opacity: 0.5; }
-
-.date-rail-track {
-  position: absolute;
-  top: 22px;
-  bottom: 22px;
-  left: calc(var(--rail-x) - 1.5px);
-  width: 3px;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--ink) 12%, transparent);
-}
-
-.date-rail-ticks { position: absolute; inset: 0; }
-
-.date-rail-tick {
-  position: absolute;
-  left: calc(var(--rail-x) - 2.5px);
-  width: 5px;
-  height: 5px;
-  margin-top: -2.5px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--ink) 28%, transparent);
-}
-
-.date-rail-year {
-  position: absolute;
-  right: calc(100% - var(--rail-x) + 7px);
-  transform: translateY(-50%);
-  font-size: 0.6rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  color: var(--ink-soft);
-  white-space: nowrap;
-}
-
-.date-rail-thumb {
-  position: absolute;
-  top: 0;
-  left: calc(var(--rail-x) - 10px);
-  width: 20px;
-  height: 20px;
-  margin-top: -10px;
-  border-radius: 50%;
-  background: var(--ink);
-  border: 3px solid var(--card);
-  box-shadow: 0 4px 12px -2px var(--shadow-lift);
-  will-change: transform;
-  transition: box-shadow var(--dur) var(--ease);
-}
-
-.date-rail.is-dragging .date-rail-thumb { box-shadow: 0 0 0 6px var(--fill-strong); }
-.date-rail:focus-visible .date-rail-thumb { box-shadow: 0 0 0 4px var(--fill-strong), 0 0 0 6px var(--ink); }
-
-/* Sürüklerken görünen tarih balonu */
-.date-rail-bubble {
-  position: absolute;
-  top: 0;
-  right: calc(100% - var(--rail-x) + 18px);
-  z-index: 5;
-  margin-top: -44px;
-  padding: 0.4rem 0.75rem;
-  border-radius: 10px;
-  background: var(--ink);
-  color: var(--paper);
-  font-size: 0.85rem;
-  font-weight: 600;
-  white-space: nowrap;
-  box-shadow: 0 10px 24px -10px var(--shadow-lift);
-  pointer-events: none;
-}
-
-@media (max-width: 599px) {
-  .timeline-body { grid-template-columns: minmax(0, 1fr) 44px; }
-  .timeline-panel { --rail-x: 24px; }
-  .date-rail-year { display: none; }
-  .timeline-scroller {
-    padding-left: 0.75rem;
-    /* Panelin tamamı üst başlık ile alttaki sekme çubuğu arasına sığsın */
-    height: calc(100vh - var(--header-h) - var(--tabbar-h) - 9rem);
-    height: calc(100svh - var(--header-h) - var(--tabbar-h) - 9rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-    min-height: 20rem;
-  }
 }
 
 /* ---------- GALERİ (iOS Fotoğraflar tarzı) ---------- */
@@ -2087,8 +1971,6 @@ section { padding: 4.5rem 1.25rem; }
   background: var(--rose);
 }
 
-/* Tarih çubuğu: sürüklerken gül hale */
-.date-rail.is-dragging .date-rail-thumb { box-shadow: 0 0 0 6px var(--rose-soft), 0 0 0 7px var(--rose-line); }
 
 /* Mektup ikonundaki kalp pul */
 .letter-icon .stamp-heart { fill: var(--rose); }
@@ -2468,3 +2350,40 @@ html:not([data-page="anasayfa"]) .site-footer { display: none; }
 }
 
 .float-heart svg { display: block; width: 100%; height: 100%; }
+
+/* ---------- UYGULAMA HİSSİ: SAYFA ZOOM'U YOK ----------
+   Sayfa iki parmakla / çift dokunarak büyütülmez (iOS için script.js'de ek önlem var).
+   Fotoğraf görüntüleyicinin kendi yakınlaştırması etkilenmez: .lightbox-viewport
+   "touch-action: none" ile jestleri tamamen JS'e bırakır. */
+html,
+body {
+  touch-action: pan-x pan-y;          /* kaydırma serbest; pinch ve çift dokunma zoom'u yok */
+  overscroll-behavior: none;          /* kenardan esneyip kayma yok */
+}
+
+*,
+*::before,
+*::after { -webkit-tap-highlight-color: transparent; }
+
+/* Dokunulabilir öğeler: çift dokunma zoom'u ve gecikme yok */
+a, button, [role="button"], label, summary, select,
+.gallery-item, .gallery-add, .timeline-card, .counter-card, .lb-mute {
+  touch-action: manipulation;
+}
+
+/* Metin seçme vurgusu kapalı… */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+/* …ama yazı alanlarında (form, not düzenleme, sözlük) seçme ve düzenleme serbest */
+input,
+textarea,
+select,
+[contenteditable="true"] {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}

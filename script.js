@@ -28,6 +28,28 @@
   // Bu boş dinleyici sayesinde "dokununca hafif büyüme" efekti iPhone'da da çalışır.
   document.addEventListener('touchstart', function () {}, { passive: true });
 
+  /* ---- Uygulama hissi: sayfa zoom'u yok ----
+     iOS Safari, viewport'taki user-scalable=no'yu görmezden gelir. Bu yüzden:
+       - iki parmak hareketleri (gesture*) ve iki parmakla sürükleme engellenir,
+       - tıklanabilir olmayan yerlerde hızlı çift dokunma sayfayı büyütmez.
+     Fotoğraf görüntüleyici (#lightbox) hariç: oradaki pinch ve çift dokunma
+     yakınlaştırması kendi JS jestleriyle çalışmaya devam eder. */
+  var ZOOM_FREE = '#lightbox';
+  var TAP_TARGETS = 'a, button, input, textarea, select, label, summary, [role="button"], [contenteditable="true"], .gallery-item, .gallery-add, .timeline-card, .counter-card, #lightbox';
+  ['gesturestart', 'gesturechange', 'gestureend'].forEach(function (type) {
+    document.addEventListener(type, function (e) { e.preventDefault(); }, { passive: false });
+  });
+  document.addEventListener('touchmove', function (e) {
+    if (e.touches.length > 1 && !(e.target.closest && e.target.closest(ZOOM_FREE))) e.preventDefault();
+  }, { passive: false });
+  var lastTouchEnd = 0;
+  document.addEventListener('touchend', function (e) {
+    var now = Date.now();
+    var onTarget = e.target.closest && e.target.closest(TAP_TARGETS);
+    if (!onTarget && now - lastTouchEnd < 320 && e.cancelable) e.preventDefault(); // çift dokunma zoom'u yok
+    lastTouchEnd = now;
+  }, { passive: false });
+
   /* ---- Dokunma geri bildirimi: parmak/fare değdiği AN öğe büyüsün ----
      Bazı telefonlar :active'i ~100 ms geciktirir; bu sınıf anında eklenir.
      Kaydırma başlarsa (pointercancel) ya da parmak çekilince kaldırılır. */
@@ -1917,23 +1939,17 @@
      8. Zaman çizelgesi — kesintisiz akış (Haftalık / Aylık / Yıllık)
         - Tüm dönemler tek listede, en yeniden en eskiye; serbestçe kaydırılır
           (otomatik dönem atlama yok)
-        - Üstteki başlık ve kenardaki tarih çubuğu, kaydırdıkça o an
-          bakılan dönemi gösterir
-        - Tarih çubuğu sürüklenerek istenen döneme gidilir
+        - Normal sayfa kaydırması (iç kaydırma kutusu ve kenar tarih çubuğu yok);
+          üstte sabit duran başlık, kaydırdıkça o an bakılan dönemi gösterir
         - Boş dönemler gösterilmez (bulunduğumuz dönem hariç)
      ========================================================= */
-  var timelineScroller = document.getElementById('timelineScroller');
+  var siteHeaderEl = document.getElementById('siteHeader');
   var timelineEmpty = document.getElementById('timelineEmpty');
   var periodLabelEl = document.getElementById('periodLabel');
   var periodCountEl = document.getElementById('periodCount');
-  var dateRail = document.getElementById('dateRail');
-  var railTicks = document.getElementById('dateRailTicks');
-  var railThumb = document.getElementById('dateRailThumb');
-  var railBubble = document.getElementById('dateRailBubble');
   var modeButtons = toArray(document.querySelectorAll('.segmented-btn[data-mode]'));
 
-  var RAIL_PAD = 22;
-  var READ_LINE = 0.3;    // kaydırıcının üstten %30'u: "şu an bakılan dönem" bu çizgiye göre
+  var tlPendingKey = null; // cetvel sayfası kapalıyken gidilmesi istenen dönem (sayfa açılınca)
 
   var tlEntries = [];     // tüm anılar (örnekler + Supabase)
   var tlMode = 'month';
@@ -2142,38 +2158,32 @@
     timelineEmpty.hidden = tlPeriods.length > 0;
 
     if (tlPeriods.indexOf(tlKey) === -1) tlKey = tlPeriods[0] || null;
-    updateRail();
     syncToScroll();
     observePreviews(timelineList);
   }
 
-  /* ---- Kaydırma: o an bakılan dönemi bul ---- */
+  /* ---- Kaydırma: o an bakılan dönemi bul (normal sayfa kaydırması) ---- */
 
-  function atBottom() { return timelineScroller.scrollTop + timelineScroller.clientHeight >= timelineScroller.scrollHeight - 2; }
+  function timelineVisible() { return currentPage === 'ani-cetveli'; }
 
-  // Kaydırma konumu:
-  //  - index: bakılan dönem (başlığı okuma çizgisini geçmiş son dönem)
-  //  - rail:  tarih çubuğu için ondalıklı konum (listenin üst kenarına göre, akıcı)
+  // Üstte sabit duran başlık + araç çubuğunun alt kenarı (ekran koordinatı)
+  function stickyBottom() {
+    var bar = document.querySelector('.timeline-toolbar');
+    return bar ? bar.getBoundingClientRect().bottom : 0;
+  }
+
+  // Bakılan dönem: başlığı, sabit araç çubuğunun biraz altındaki "okuma çizgisini" geçmiş son dönem
   function scrollPosition() {
     var n = tlPeriods.length;
-    if (!n) return { index: 0, rail: 0 };
-    var st = timelineScroller.scrollTop;
-    if (st <= 1) return { index: 0, rail: 0 };
-    if (atBottom()) return { index: n - 1, rail: n - 1 };
-    // offsetTop/offsetHeight: kaydırma sırasında sayfa düzenini yeniden hesaplatmaz
-    // (getBoundingClientRect her karede çağrılınca dönem sınırlarında takılma oluyordu)
-    var base = timelineList.offsetTop - st;   // listenin kaydırıcı görünümüne göre üstü
-    var line = Math.min(timelineScroller.clientHeight * READ_LINE, 160);
-    var idx = 0, top = 0;
+    if (!n) return 0;
+    var nearBottom = window.innerHeight + window.pageYOffset >= document.documentElement.scrollHeight - 4;
+    if (nearBottom && window.pageYOffset > 0) return n - 1;
+    var line = stickyBottom() + 60;
+    var idx = 0;
     for (var i = 0; i < n; i++) {
-      var t = base + periodEls[tlPeriods[i]].offsetTop;
-      if (t <= line) idx = i;
-      if (t <= 0) top = i;
-      if (t > line) break;
+      if (periodEls[tlPeriods[i]].getBoundingClientRect().top <= line) idx = i; else break;
     }
-    var el = periodEls[tlPeriods[top]];
-    var rail = top + clamp(-(base + el.offsetTop) / Math.max(el.offsetHeight, 1), 0, 1);
-    return { index: idx, rail: Math.min(rail, n - 1) };
+    return idx;
   }
 
   var headingKey = null;   // başlıkta şu an yazan dönem (görünüm değişince sıfırlanır)
@@ -2183,31 +2193,36 @@
     periodLabelEl.textContent = key ? periodLabel(key, tlMode) : '';
     var count = key ? entriesIn(key).length : 0;
     periodCountEl.textContent = count ? count + ' anı' : '';
-    dateRail.setAttribute('aria-valuenow', String(Math.max(0, tlPeriods.indexOf(key))));
-    dateRail.setAttribute('aria-valuetext', key ? periodLabel(key, tlMode) : '');
   }
 
-  // Başlığı ve tarih çubuğunu kaydırma konumuna eşitle
+  // Başlığı kaydırma konumuna eşitle (sayfa kapalıyken en yeni dönem)
   function syncToScroll() {
-    var pos = scrollPosition();
-    tlKey = tlPeriods[pos.index] || null;
+    var idx = timelineVisible() ? scrollPosition() : 0;
+    tlKey = tlPeriods[idx] || null;
     if (tlKey !== headingKey) showPeriodHeading(tlKey);
-    if (!railDrag) setRailThumb(pos.rail);
   }
 
   var scrollRaf = 0;
-  timelineScroller.addEventListener('scroll', function () {
-    if (scrollRaf) return;
+  window.addEventListener('scroll', function () {
+    if (scrollRaf || !timelineVisible()) return;
     scrollRaf = requestAnimationFrame(function () { scrollRaf = 0; syncToScroll(); });
   }, { passive: true });
 
-  // Bir dönemin başına git (sürüklerken anında, klavyede yumuşak)
+  // Bir dönemin başına git (sabit başlığın altına gelecek şekilde).
+  // Cetvel sayfası kapalıysa, sayfa açılınca gidilir.
   function scrollToPeriod(key, smooth) {
+    if (!timelineVisible()) { tlPendingKey = key; return; }
     var el = periodEls[key];
     if (!el) return;
-    var top = el.getBoundingClientRect().top - timelineScroller.getBoundingClientRect().top + timelineScroller.scrollTop - 8;
-    if (smooth && !reduced() && timelineScroller.scrollTo) timelineScroller.scrollTo({ top: top, behavior: 'smooth' });
-    else timelineScroller.scrollTop = top;
+    var top = window.pageYOffset + el.getBoundingClientRect().top - stickyBottom() - 10;
+    window.scrollTo({ top: Math.max(0, top), behavior: smooth && !reduced() ? 'smooth' : 'instant' });
+  }
+
+  function scrollTimelineToTop() {
+    if (!timelineVisible()) { tlPendingKey = null; return; }
+    var panel = document.getElementById('timelinePanel');
+    var top = window.pageYOffset + panel.getBoundingClientRect().top - (siteHeaderEl ? siteHeaderEl.offsetHeight : 0) - 12;
+    if (window.pageYOffset > top) window.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
   }
 
   // Bakılan tarih: dönemin en yeni anısı (yoksa dönemin kendisi)
@@ -2217,101 +2232,6 @@
     if (shown.length) return shown[0].date;
     return tlKey === currentKey() ? new Date() : parseDateValue(tlKey);
   }
-
-  /* ---- Kenar tarih çubuğu ---- */
-
-  function railY(i, n) {
-    var h = dateRail.clientHeight - 2 * RAIL_PAD;
-    return RAIL_PAD + (n <= 1 ? 0 : h * i / (n - 1));
-  }
-
-  function railIndexAt(clientY) {
-    var n = tlPeriods.length;
-    if (n <= 1) return 0;
-    var r = dateRail.getBoundingClientRect();
-    var t = (clientY - r.top - RAIL_PAD) / (r.height - 2 * RAIL_PAD);
-    return clamp(Math.round(t * (n - 1)), 0, n - 1);
-  }
-
-  // i ondalıklı olabilir: kaydırdıkça dönemler arasında akıcı ilerler
-  function setRailThumb(i) {
-    railThumb.style.transform = 'translateY(' + railY(clamp(i, 0, Math.max(0, tlPeriods.length - 1)), tlPeriods.length) + 'px)';
-  }
-
-  function updateRail() {
-    var n = tlPeriods.length;
-    var html = '';
-    var lastYear = null;
-    tlPeriods.forEach(function (k, i) {
-      var y = railY(i, n);
-      if (n <= 80) html += '<span class="date-rail-tick" style="top:' + y + 'px"></span>';
-      var year = k.slice(0, 4);
-      if (year !== lastYear && (tlMode !== 'year' || n <= 12)) {
-        html += '<span class="date-rail-year" style="top:' + y + 'px">' + year + '</span>';
-      }
-      lastYear = year;
-    });
-    railTicks.innerHTML = html;
-
-    dateRail.setAttribute('aria-valuemin', '0');
-    dateRail.setAttribute('aria-valuemax', String(Math.max(0, n - 1)));
-    dateRail.classList.toggle('is-disabled', n <= 1);
-    if (n) syncToScroll();
-  }
-
-  var railDrag = null;
-
-  // Sürüklerken: balon dönemi gösterir, liste anında o döneme kayar
-  function railPreview(clientY) {
-    var i = railIndexAt(clientY);
-    railDrag.index = i;
-    setRailThumb(i);
-    railBubble.textContent = periodLabel(tlPeriods[i], tlMode);
-    railBubble.style.transform = 'translateY(' + railY(i, tlPeriods.length) + 'px)';
-    railBubble.hidden = false;
-    if (railDrag.shown !== i) { railDrag.shown = i; scrollToPeriod(tlPeriods[i], false); }
-  }
-
-  function endRailDrag(e) {
-    if (!railDrag || e.pointerId !== railDrag.id) return;
-    railDrag = null;
-    dateRail.classList.remove('is-dragging');
-    railBubble.hidden = true;
-    syncToScroll();
-  }
-
-  dateRail.addEventListener('pointerdown', function (e) {
-    if (tlPeriods.length <= 1) return;
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-    e.preventDefault();
-    try { dateRail.setPointerCapture(e.pointerId); } catch (err) { /* desteklenmiyorsa sorun değil */ }
-    railDrag = { id: e.pointerId, index: tlPeriods.indexOf(tlKey), shown: -1 };
-    dateRail.classList.add('is-dragging');
-    dateRail.focus({ preventScroll: true });
-    railPreview(e.clientY);
-  });
-
-  dateRail.addEventListener('pointermove', function (e) {
-    if (railDrag && e.pointerId === railDrag.id) railPreview(e.clientY);
-  });
-
-  dateRail.addEventListener('pointerup', endRailDrag);
-  dateRail.addEventListener('pointercancel', endRailDrag);
-
-  // Klavye: ↑/↓ bir dönem, Home/End en yeni/en eski
-  dateRail.addEventListener('keydown', function (e) {
-    var i = Math.max(0, tlPeriods.indexOf(tlKey)), n = tlPeriods.length, t;
-    if (e.key === 'ArrowDown' || e.key === 'PageDown') t = i + 1;
-    else if (e.key === 'ArrowUp' || e.key === 'PageUp') t = i - 1;
-    else if (e.key === 'Home') t = 0;
-    else if (e.key === 'End') t = n - 1;
-    else return;
-    e.preventDefault();
-    t = clamp(t, 0, n - 1);
-    if (t !== i) scrollToPeriod(tlPeriods[t], true);
-  });
-
-  window.addEventListener('resize', updateRail);
 
   /* ---- Haftalık / Aylık / Yıllık ---- */
 
@@ -2325,7 +2245,7 @@
     renderTimeline();
     var key = periodKeyOf(anchor, mode);
     if (!periodEls[key]) key = tlPeriods.filter(function (k) { return k <= key; })[0] || tlPeriods[tlPeriods.length - 1];
-    if (key === tlPeriods[0]) timelineScroller.scrollTop = 0; else scrollToPeriod(key, false);
+    if (key === tlPeriods[0]) scrollTimelineToTop(); else scrollToPeriod(key, false);
     syncToScroll();
     if (!reduced() && timelineList.animate) {
       timelineList.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 220, easing: 'ease-out' });
@@ -2366,20 +2286,19 @@
 
   // Listeyi yeniden çiz; kullanıcının baktığı yer (dönem + kaydırma payı) korunsun
   function rerenderKeepingPlace() {
+    if (!timelineVisible()) { renderTimeline(); return; }
     var key = tlKey;
     var el = key && periodEls[key];
-    var offset = el ? el.getBoundingClientRect().top - timelineScroller.getBoundingClientRect().top : 0;
-    var wasTop = timelineScroller.scrollTop <= 1;
+    var offset = el ? el.getBoundingClientRect().top : 0;
     renderTimeline();
-    if (wasTop || !periodEls[key]) { timelineScroller.scrollTop = 0; syncToScroll(); return; }
-    timelineScroller.scrollTop += periodEls[key].getBoundingClientRect().top - timelineScroller.getBoundingClientRect().top - offset;
+    if (periodEls[key]) window.scrollBy({ top: periodEls[key].getBoundingClientRect().top - offset, behavior: 'instant' });
     syncToScroll();
   }
 
   // Bir anının dönemine kaydır (yeni eklenen / tarihi değişen anı görünsün)
   function revealEntryPeriod(entry) {
     var key = periodKeyOf(entry.date, tlMode);
-    if (key === tlPeriods[0]) timelineScroller.scrollTop = 0; else scrollToPeriod(key, false);
+    if (key === tlPeriods[0]) scrollTimelineToTop(); else scrollToPeriod(key, false);
     syncToScroll();
   }
 
@@ -2445,7 +2364,12 @@
   renderTimeline();
 
   // Cetvel sayfası görünür olunca tarih çubuğunu ölç ve kaydırma konumuna eşitle
-  pageShownHooks.push(function (id) { if (id === 'ani-cetveli') updateRail(); });
+  // Cetvel sayfası açılınca: bekleyen döneme git, başlığı kaydırma konumuna eşitle
+  pageShownHooks.push(function (id) {
+    if (id !== 'ani-cetveli') return;
+    if (tlPendingKey) { var k = tlPendingKey; tlPendingKey = null; scrollToPeriod(k, false); }
+    syncToScroll();
+  });
   showPage(pageFromHash(), { instant: true });
 
   /* =========================================================
@@ -2524,7 +2448,7 @@
     tulip: '#EE8FB0', tulipDark: '#D46A92', stem: '#5C9E57', heart: '#E57A95'
   };
   var EFE = { legH: 11, torsoH: 10, hair: '#8A5A3B', hairLong: false, top: '#1E1E1E', topDark: '#3B3B3B', sleeve: 3, pants: '#3D5F95', shoes: '#FFFFFF', shoeEdge: '#C9C9C9' };
-  var ZEYNEP = { legH: 8, torsoH: 8, hair: '#E8C872', hairLong: true, top: '#EFE3CC', topDark: '#DDCDAF', pants: '#222226', shoes: '#FFFFFF', shoeEdge: '#C9C9C9' };
+  var ZEYNEP = { legH: 8, torsoH: 8, hair: '#E8C872', hairLong: true, top: '#EFE3CC', topDark: '#DDCDAF', pants: '#222226', shoes: '#FFFFFF', shoeEdge: '#C9C9C9', eye: '#3F8F5B' };
   var HEART_PX = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
 
   function cpx(x, y, w, h, col) { introCtx.fillStyle = col; introCtx.fillRect(Math.round(x), Math.round(y), w, h); }
@@ -2604,8 +2528,8 @@
     if (P.hairLong) { cpx(x - 1, hy + 2, 2, 9, P.hair); cpx(x + 7, hy + 2, 2, 9, P.hair); }
     else { cpx(x - 1, hy + 2, 1, 2, P.hair); cpx(x + 8, hy + 2, 1, 2, P.hair); cpx(x + 1, hy + 2, 2, 1, P.hair); }
     var lk = pose.look || 0;
-    cpx(x + 2 + lk, hy + 4, 1, 1, PAL.eye);
-    cpx(x + 5 + lk, hy + 4, 1, 1, PAL.eye);
+    cpx(x + 2 + lk, hy + 4, 1, 1, P.eye || PAL.eye);
+    cpx(x + 5 + lk, hy + 4, 1, 1, P.eye || PAL.eye);
     if (pose.blush) { cpx(x + 1, hy + 5, 1, 1, PAL.blush); cpx(x + 6, hy + 5, 1, 1, PAL.blush); }
     if (pose.smile) { cpx(x + 3, hy + 6, 2, 1, PAL.mouth); }
     // El: uzatılmışsa önde, değilse yanda (lale vücudun yanında, yüzü kapatmadan tutulur)
@@ -2823,9 +2747,11 @@
 
   // Tuvali ekran oranına göre boyutlandır: dikeyde üstte daha çok gökyüzü,
   // yatayda iki yana uzayan sokak. Sahne her zaman alt-ortada durur.
+  var introSizedW = 0;   // sahne en son hangi ekran genişliğine göre boyutlandı
   function sizeIntro() {
     if (!introCtx) return;
     var w = window.innerWidth || 390, h = window.innerHeight || 844;
+    introSizedW = w;
     var aspect = w / h;
     if (aspect < SCENE_W / SCENE_H) { iW = SCENE_W; iH = Math.min(420, Math.round(SCENE_W / aspect)); }
     else { iH = SCENE_H; iW = Math.min(480, Math.round(SCENE_H * aspect)); }
@@ -2872,9 +2798,14 @@
     });
   }
 
+  // Sahneyi başlatır. Sahne ZATEN oynuyorsa baştan başlatmaz, sadece içeriğin hazır
+  // olmasını bekler. (Hata: açılışta oturum kontrolü bitince — ağ hızına göre 0,5–2 sn
+  // sonra — "giriş yapıldı" için tekrar çağrılıyor ve oynayan sahneyi başa sarıyordu.)
   function showSplash() {
     if (!splash) return;
+    if (introVisible) { introContentReady = false; return; }
     introToken++;
+    splash.dataset.runs = String((+splash.dataset.runs || 0) + 1); // kaç kez başlatıldı (test/teşhis)
     introVisible = true;
     introAnimDone = false;
     introContentReady = false;
@@ -2905,7 +2836,10 @@
   }
 
   if (splash) {
-    window.addEventListener('resize', function () { if (introVisible && !splash.classList.contains('is-reduced')) sizeIntro(); });
+    window.addEventListener('resize', function () {
+      if (!introVisible || splash.classList.contains('is-reduced')) return;
+      if (Math.abs((window.innerWidth || 0) - introSizedW) > 1) sizeIntro();
+    });
   }
 
   // Bir fotoğraf indirilip çözülene ya da videonun ilk bilgileri gelene kadar bekle
@@ -3036,7 +2970,6 @@
       authStatus.textContent = '';
       resetAuthForm();
       setAuthState('in');
-      updateRail(); // panel artık görünür: çubuk ölçülerini yenile
       loadWords();
       refreshMemories()
         .then(function () { return waitForMedia(SPLASH_MAX_MS); })
