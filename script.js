@@ -2448,7 +2448,7 @@
     tulip: '#EE8FB0', tulipDark: '#D46A92', stem: '#5C9E57', heart: '#E57A95'
   };
   var EFE = { legH: 11, torsoH: 10, hair: '#8A5A3B', hairLong: false, top: '#1E1E1E', topDark: '#3B3B3B', sleeve: 3, pants: '#3D5F95', shoes: '#FFFFFF', shoeEdge: '#C9C9C9' };
-  var ZEYNEP = { legH: 8, torsoH: 6, bodyW: 6, headS: 6, legW: 2, hair: '#E8C872', hairLong: true, top: '#EFE3CC', topDark: '#DDCDAF', pants: '#222226', shoes: '#FFFFFF', shoeEdge: '#C9C9C9', eye: '#1F2E22' };
+  var ZEYNEP = { legH: 7, torsoH: 7, hair: '#E8C872', hairLong: true, top: '#EFE3CC', topDark: '#DDCDAF', pants: '#222226', shoes: '#FFFFFF', shoeEdge: '#C9C9C9', eye: '#1F2E22' };
   var HEART_PX = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
 
   function cpx(x, y, w, h, col) { introCtx.fillStyle = col; introCtx.fillRect(Math.round(x), Math.round(y), w, h); }
@@ -2725,7 +2725,7 @@
     c.translate(iOX, iOY + Math.round(cam));
     drawBackground(t);
 
-    var FOOT = 104, ZX = 129, EX = 111;
+    var FOOT = 104, ZX = 128, EX = 111;
     var outDist = iW - iOX - EX + 24;                       // ekranın sağından çıkana kadar
     var together = seg(t, 5.0, 6.8);
     var efeX = lerp(-iOX - 16, EX, easeOut(seg(t, 0.4, 2.4))) + together * outDist;
