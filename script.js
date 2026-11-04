@@ -28,6 +28,13 @@
   // Bu boş dinleyici sayesinde "dokununca hafif büyüme" efekti iPhone'da da çalışır.
   document.addEventListener('touchstart', function () {}, { passive: true });
 
+  // Çevrimdışı destek: uygulama dosyaları ve görüntülenen fotoğraflar önbelleğe alınır (sw.js)
+  if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
+    window.addEventListener('load', function () {
+      navigator.serviceWorker.register('sw.js').catch(function () { /* desteklenmiyorsa uygulama yine çalışır */ });
+    });
+  }
+
   /* ---- Uygulama hissi: sayfa zoom'u yok ----
      iOS Safari, viewport'taki user-scalable=no'yu görmezden gelir. Bu yüzden:
        - iki parmak hareketleri (gesture*) ve iki parmakla sürükleme engellenir,
@@ -653,6 +660,7 @@
 
     formEl.addEventListener('submit', function (e) {
       e.preventDefault();
+      if (!requireOnline()) return;
       var title = inTitle.value.trim();
       if (!title) { statusEl.textContent = 'Başlık boş olamaz.'; inTitle.focus(); return; }
       saveBtn.disabled = cancelBtn.disabled = true;
@@ -682,6 +690,7 @@
     });
 
     yesBtn.addEventListener('click', function () {
+      if (!requireOnline()) return;
       yesBtn.disabled = noBtn.disabled = true;
       statusEl.textContent = 'Siliniyor...';
       deleteMemory(entry)
@@ -2971,6 +2980,96 @@
     pendingAuthMessage = '';
   }
 
+  /* ---- Çevrimdışı: son çekilen veriler cihazda saklanır ----
+     Anılar ve sözlük, her başarılı yüklemede localStorage'a yazılır (kullanıcıya bağlı).
+     İnternet yokken bu son liste gösterilir; fotoğraflar sw.js önbelleğinden gelir,
+     videolar yer tutucuyla gösterilir. Çıkış yapınca bu kayıtlar silinir. */
+  var OFFLINE_PREFIX = 'dijital-album:offline:v1:';
+
+  function isOffline() { return navigator.onLine === false; }
+
+  function isNetworkError(err) {
+    var msg = (err && (err.message || err.name || '')) + ' ' + String(err || '');
+    return isOffline() || /failed to fetch|networkerror|network request|load failed|fetch failed|err_internet|offline/i.test(msg);
+  }
+
+  function saveOffline(name, data) {
+    if (!currentUser) return;
+    try { localStorage.setItem(OFFLINE_PREFIX + name, JSON.stringify({ uid: currentUser.id, at: Date.now(), data: data })); } catch (e) { /* yer yoksa sorun değil */ }
+  }
+
+  function loadOffline(name, uid) {
+    try {
+      var v = JSON.parse(localStorage.getItem(OFFLINE_PREFIX + name) || 'null');
+      return v && v.uid === uid ? v.data : null;
+    } catch (e) { return null; }
+  }
+
+  // Bu cihazda daha önce üyeliği doğrulanmış kullanıcı: internet yokken giriş ekranına atılmaz
+  function rememberMember(uid) { try { localStorage.setItem(OFFLINE_PREFIX + 'member', uid); } catch (e) {} }
+  function isRememberedMember(uid) { try { return localStorage.getItem(OFFLINE_PREFIX + 'member') === uid; } catch (e) { return false; } }
+
+  function forgetOffline() {
+    try {
+      Object.keys(localStorage).forEach(function (k) { if (k.indexOf(OFFLINE_PREFIX) === 0) localStorage.removeItem(k); });
+    } catch (e) {}
+  }
+
+  /* ---- Bağlantı bildirimi ---- */
+  var netBanner = document.getElementById('netBanner');
+  var netText = document.getElementById('netText');
+  var netTimer = null;
+  var NET_TEXT = {
+    offline: 'Bağlantını kontrol et — kayıtlı anıların görüntüleniyor',
+    action: 'İnternet yok — bu işlem için bağlantı gerekiyor, bağlanınca tekrar dene',
+    online: 'Tekrar bağlandın'
+  };
+
+  function showNet(kind) {
+    if (!netBanner) return;
+    clearTimeout(netTimer);
+    netBanner.dataset.kind = kind;
+    netText.textContent = NET_TEXT[kind];
+    netBanner.hidden = false;
+    void netBanner.offsetWidth;
+    netBanner.classList.add('is-shown');
+    if (kind === 'online') netTimer = setTimeout(hideNet, 2200);
+    if (kind === 'action') netTimer = setTimeout(function () { if (isOffline()) showNet('offline'); else hideNet(); }, 3200);
+  }
+
+  function hideNet() {
+    if (!netBanner) return;
+    clearTimeout(netTimer);
+    netBanner.classList.remove('is-shown');
+    netTimer = setTimeout(function () { netBanner.hidden = true; }, 600);
+  }
+
+  // İnternet gerektiren işlemden önce: çevrimdışıysa nazik uyarı, işlem yapılmaz
+  function requireOnline() {
+    if (!isOffline()) return true;
+    showNet('action');
+    return false;
+  }
+
+  window.addEventListener('offline', function () { showNet('offline'); });
+  window.addEventListener('online', function () {
+    showNet('online');
+    // veriler sessizce yenilensin (açılış ekranı olmadan)
+    if (currentUser) { refreshMemories(); loadWords(); }
+  });
+  if (isOffline()) showNet('offline');
+
+  // Önbellekte olmayan fotoğraf (çevrimdışı): kırık resim yerine yer tutucu
+  document.addEventListener('error', function (e) {
+    var img = e.target;
+    if (!img || img.tagName !== 'IMG') return;
+    if (!img.closest('.gallery-media, .timeline-media, .polaroid-photo')) return;
+    var ph = document.createElement('span');
+    ph.className = 'media-missing';
+    ph.innerHTML = HEART_SVG;
+    img.replaceWith(ph);
+  }, true);
+
   // Oturum değişince (açılış, giriş, çıkış, token yenileme) çağrılır
   function handleSession(session) {
     var user = session && session.user;
@@ -2983,15 +3082,18 @@
 
     checkingUserId = user.id;
     showSplash(); // giriş yapıldı: anılar ve fotoğraflar hazır olana kadar yükleme ekranı
-    sb.rpc('is_member').then(function (res) {
+    sb.rpc('is_member').then(null, function (err) { return { data: null, error: err }; }).then(function (res) {
       checkingUserId = null;
-      if (res.error || res.data !== true) {
+      // İnternet yok ama bu cihazda daha önce doğrulanmış üye: giriş ekranına atma
+      var offlineOk = !!res.error && isNetworkError(res.error) && isRememberedMember(user.id);
+      if (!offlineOk && (res.error || res.data !== true)) {
         pendingAuthMessage = res.error
           ? friendlyError(res.error)
           : (user.email + ' adresinin Dijital Albüm\'e erişim izni yok.');
         return sb.auth.signOut({ scope: 'local' }).then(function () { showLogin(); });
       }
       currentUser = user;
+      if (!offlineOk) rememberMember(user.id);
       signOutBtn.title = user.email + ' olarak giriş yapıldı';
       settingsEmail.textContent = user.email;
       authStatus.textContent = '';
@@ -3113,6 +3215,7 @@
     signOutBtn.disabled = true;
     sb.auth.signOut().then(function () {
       signOutBtn.disabled = false;
+      forgetOffline();
       showLogin('Çıkış yaptın. Görüşmek üzere 🤍');
     });
   });
@@ -3167,15 +3270,34 @@
       })
       .then(function (rows) {
         if (token !== loadToken || !currentUser) return;
-        clearGalleryMemories();
-        rows.forEach(function (row) { if (row.media) addToGallery(row.id, row.title, row.media); });
-        setTimelineMemories(rows);
-        refreshGalleryItems();
+        renderMemoryRows(rows);
         lastLoadedAt = Date.now();
+        saveOffline('memories', rows.map(function (r) {
+          return { id: r.id, title: r.title, date: r.date, note: r.note, photo_url: r.photo_url || null, video_url: r.video_url || null, created_at: r.created_at, media: r.media || null };
+        }));
       })
       .catch(function (err) {
-        if (token === loadToken && formStatus) formStatus.textContent = 'Anılar yüklenemedi. ' + friendlyError(err);
+        if (token !== loadToken) return;
+        // İnternet yok: bu cihazdaki son anı listesini göster
+        var cached = currentUser && isNetworkError(err) ? loadOffline('memories', currentUser.id) : null;
+        if (cached) {
+          renderMemoryRows(cached.map(function (r) {
+            // videolar önbelleğe alınmaz: çevrimdışında yer tutucu
+            if (r.video_url || (r.media && r.media.type === 'video')) r.media = null;
+            return r;
+          }));
+          if (isOffline()) showNet('offline');
+          return;
+        }
+        if (formStatus) formStatus.textContent = 'Anılar yüklenemedi. ' + friendlyError(err);
       });
+  }
+
+  function renderMemoryRows(rows) {
+    clearGalleryMemories();
+    rows.forEach(function (row) { if (row.media) addToGallery(row.id, row.title, row.media); });
+    setTimelineMemories(rows);
+    refreshGalleryItems();
   }
 
   // Sayfa uzun süre açık kaldıysa (imzalı linkler eskidiyse) geri gelince yenile
@@ -3364,12 +3486,23 @@
       if (res.error) throw res.error;
       dictMissing = false;
       dictWords = res.data || [];
+      saveOffline('words', dictWords);
       sortWords();
       setDictEnabled(true);
       dictStatus.textContent = '';
       renderDict();
     }).catch(function (err) {
       if (token !== dictToken) return;
+      var cachedWords = currentUser && isNetworkError(err) ? loadOffline('words', currentUser.id) : null;
+      if (cachedWords) {
+        dictMissing = false;
+        dictWords = cachedWords;
+        sortWords();
+        setDictEnabled(true);
+        dictStatus.textContent = '';
+        renderDict();
+        return;
+      }
       dictStatus.textContent = dictError(err);
       setDictEnabled(!dictMissing);
       dictWords = [];
@@ -3400,6 +3533,7 @@
     dictForm.addEventListener('submit', function (e) {
       e.preventDefault();
       if (!currentUser || dictMissing) return;
+      if (!requireOnline()) return;
       var word = dictWord.value.trim();
       var meaning = dictMeaning.value.trim();
       if (!word) { dictStatus.textContent = 'Önce bir kelime yaz.'; dictWord.focus(); return; }
@@ -3434,6 +3568,7 @@
       if (e.target.closest('.dict-cancel')) { li.replaceWith(buildDictItem(w)); return; }
       var yes = e.target.closest('.dict-confirm-yes');
       if (yes) {
+        if (!requireOnline()) return;
         yes.disabled = true;
         sb.from('dictionary_words').delete().eq('id', w.id).select('id').then(function (res) {
           if (res.error) throw res.error;
@@ -3461,6 +3596,7 @@
         dictStatus.textContent = '“' + word + '” zaten sözlükte.';
         return;
       }
+      if (!requireOnline()) return;
       var save = li.querySelector('[type="submit"]');
       save.disabled = true;
       sb.from('dictionary_words').update({ word: word, meaning: meaning || null }).eq('id', w.id).select(DICT_COLUMNS)
@@ -3565,6 +3701,7 @@
     form.addEventListener('submit', function (e) {
       e.preventDefault();
       if (!currentUser) return;
+      if (!requireOnline()) return;
 
       var title = document.getElementById('memTitle').value.trim();
       var dateValue = document.getElementById('memDate').value;

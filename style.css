@@ -2393,3 +2393,87 @@ select,
   user-select: text;
   -webkit-touch-callout: default;
 }
+
+/* ---------- BAĞLANTI YOK BİLDİRİMİ ----------
+   Üstten yumuşakça inen küçük kart: kopuk kalp + kısa mesaj. Bağlantı gelince
+   kalp birleşir, "Tekrar bağlandın" der ve kaybolur. */
+.net-banner {
+  position: fixed;
+  top: calc(env(safe-area-inset-top, 0px) + var(--header-h) + 10px);
+  left: 50%;
+  z-index: 95;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  max-width: calc(100% - 32px);
+  padding: 0.6rem 1rem 0.6rem 0.75rem;
+  border-radius: 16px;
+  background: var(--glass-strong);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 14px 34px -18px var(--shadow-lift);
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 500;
+  line-height: 1.3;
+  transform: translate(-50%, -160%);
+  opacity: 0;
+  transition: transform 520ms var(--ease), opacity 360ms var(--ease);
+  pointer-events: none;
+}
+
+.net-banner.is-shown { transform: translate(-50%, 0); opacity: 1; }
+
+.net-icon { flex: none; width: 22px; height: 22px; color: var(--rose); }
+.net-heart { display: block; width: 100%; height: 100%; overflow: visible; }
+.net-half { transition: transform 500ms var(--ease); transform-box: fill-box; }
+
+/* Bağlantı yok: kalp ikiye ayrılır, hafifçe sallanır */
+.net-banner[data-kind="offline"] .net-half--l,
+.net-banner[data-kind="action"] .net-half--l { transform: translate(-1.5px, 0.5px) rotate(-8deg); }
+.net-banner[data-kind="offline"] .net-half--r,
+.net-banner[data-kind="action"] .net-half--r { transform: translate(1.5px, 0.5px) rotate(8deg); }
+.net-banner[data-kind="offline"] .net-heart { animation: net-sway 2.4s ease-in-out infinite; }
+.net-banner[data-kind="action"] .net-heart { animation: net-nudge 0.5s ease-in-out 2; }
+
+@keyframes net-sway {
+  0%, 100% { transform: rotate(0deg); }
+  50% { transform: rotate(-6deg) translateY(1px); }
+}
+
+@keyframes net-nudge {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-2px); }
+  75% { transform: translateX(2px); }
+}
+
+/* Tekrar bağlandı: kalp birleşir ve bir kez atar */
+.net-banner[data-kind="online"] .net-heart { animation: net-beat 0.7s ease-out 1; }
+
+@keyframes net-beat {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.22); }
+  100% { transform: scale(1); }
+}
+
+/* Giriş/açılış sırasında gösterme (açılış sahnesi zaten tam ekran) */
+html[data-auth="loading"] .net-banner { display: none; }
+
+/* Çevrimdışıyken önbellekte olmayan fotoğraf / video: kırık resim yerine yer tutucu */
+.media-missing {
+  display: grid;
+  place-items: center;
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+  color: var(--rose);
+  background: var(--fill);
+}
+
+.media-missing svg { width: 34%; height: 34%; opacity: 0.6; }
+
+/* Bağlantı yokken kopuk kalp (iki yarım), bağlanınca bütün kalp */
+.net-whole { display: none; }
+.net-banner[data-kind="online"] .net-whole { display: inline; }
+.net-banner[data-kind="online"] .net-half { display: none; }
