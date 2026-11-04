@@ -2448,7 +2448,7 @@
     tulip: '#EE8FB0', tulipDark: '#D46A92', stem: '#5C9E57', heart: '#E57A95'
   };
   var EFE = { legH: 11, torsoH: 10, hair: '#8A5A3B', hairLong: false, top: '#1E1E1E', topDark: '#3B3B3B', sleeve: 3, pants: '#3D5F95', shoes: '#FFFFFF', shoeEdge: '#C9C9C9' };
-  var ZEYNEP = { legH: 8, torsoH: 8, hair: '#E8C872', hairLong: true, top: '#EFE3CC', topDark: '#DDCDAF', pants: '#222226', shoes: '#FFFFFF', shoeEdge: '#C9C9C9', eye: '#1F2E22' };
+  var ZEYNEP = { legH: 8, torsoH: 6, bodyW: 6, headS: 6, legW: 2, hair: '#E8C872', hairLong: true, top: '#EFE3CC', topDark: '#DDCDAF', pants: '#222226', shoes: '#FFFFFF', shoeEdge: '#C9C9C9', eye: '#1F2E22' };
   var HEART_PX = ['.XX.XX.', 'XXXXXXX', 'XXXXXXX', '.XXXXX.', '..XXX..', '...X...'];
 
   function cpx(x, y, w, h, col) { introCtx.fillStyle = col; introCtx.fillRect(Math.round(x), Math.round(y), w, h); }
@@ -2478,32 +2478,36 @@
   }
 
   // Önden görünüşlü sevimli karakter. pose: { walk: 0|1|2, sit, look (-1|0|1), arm ('down'|'fwd'|'hidden'), dir (1 sağ, -1 sol), blush, smile }
+  // Ölçüler karaktere göre: bodyW (gövde genişliği, vars. 8), headS (kafa, vars. 8), legW (bacak kalınlığı, vars. 3).
+  // Efe varsayılan ölçülerle çizilir; Zeynep her yönden orantılı olarak daha küçük.
   function drawPerson(P, x, fy, pose) {
     x = Math.round(x); fy = Math.round(fy);
+    var bw = P.bodyW || 8, hs = P.headS || 8, lw = P.legW || 3;
+    var rightLeg = x + bw - lw;
     var top, hipY;
     if (pose.sit) {
       hipY = 94;
-      cpx(x, hipY - 1, 8, 3, P.pants);
-      cpx(x, hipY + 2, 3, fy - hipY - 4, P.pants);
-      cpx(x + 5, hipY + 2, 3, fy - hipY - 4, P.pants);
-      cpx(x, fy - 2, 3, 2, P.shoes); cpx(x + 5, fy - 2, 3, 2, P.shoes);
-      cpx(x, fy - 1, 3, 1, P.shoeEdge); cpx(x + 5, fy - 1, 3, 1, P.shoeEdge);
+      cpx(x, hipY - 1, bw, 3, P.pants);
+      cpx(x, hipY + 2, lw, fy - hipY - 4, P.pants);
+      cpx(rightLeg, hipY + 2, lw, fy - hipY - 4, P.pants);
+      cpx(x, fy - 2, lw, 2, P.shoes); cpx(rightLeg, fy - 2, lw, 2, P.shoes);
+      cpx(x, fy - 1, lw, 1, P.shoeEdge); cpx(rightLeg, fy - 1, lw, 1, P.shoeEdge);
     } else {
       hipY = fy - P.legH;
       var l = pose.walk === 1 ? 1 : 0, r = pose.walk === 2 ? 1 : 0;
-      cpx(x, hipY, 3, P.legH - 2 - l, P.pants);
-      cpx(x + 5, hipY, 3, P.legH - 2 - r, P.pants);
-      cpx(x - l, fy - 2 - l, 3, 2, P.shoes); cpx(x + 5 + r, fy - 2 - r, 3, 2, P.shoes);
-      cpx(x - l, fy - 1 - l, 3, 1, P.shoeEdge); cpx(x + 5 + r, fy - 1 - r, 3, 1, P.shoeEdge);
-      cpx(x + 3, hipY, 2, 2, P.pants);
+      cpx(x, hipY, lw, P.legH - 2 - l, P.pants);
+      cpx(rightLeg, hipY, lw, P.legH - 2 - r, P.pants);
+      cpx(x - l, fy - 2 - l, lw, 2, P.shoes); cpx(rightLeg + r, fy - 2 - r, lw, 2, P.shoes);
+      cpx(x - l, fy - 1 - l, lw, 1, P.shoeEdge); cpx(rightLeg + r, fy - 1 - r, lw, 1, P.shoeEdge);
+      cpx(x + lw, hipY, bw - 2 * lw, 2, P.pants);
     }
     top = hipY - P.torsoH;
-    cpx(x - 1, top, 10, P.torsoH, P.top);
+    cpx(x - 1, top, bw + 2, P.torsoH, P.top);
     if (P === EFE) { cpx(x + 2, top, 2, 1, P.topDark); cpx(x + 4, top, 2, 1, P.topDark); cpx(x + 4, top + 1, 1, 3, P.topDark); } // polo yaka
-    else { cpx(x - 1, hipY - 1, 10, 1, P.topDark); }                                                                         // kazak lastiği
+    else { cpx(x - 1, hipY - 1, bw + 2, 1, P.topDark); }                                                                     // kazak lastiği
     var d = pose.dir || 1;
-    var fwdSide = d > 0 ? x + 9 : x - 3;
-    var backSide = d > 0 ? x - 3 : x + 9;
+    var fwdSide = d > 0 ? x + bw + 1 : x - 3;
+    var backSide = d > 0 ? x - 3 : x + bw + 1;
     // Aşağı sarkan kol: uzun kolluysa bileğe kadar giysi + el; kısa kolluysa (P.sleeve) omuzda giysi, gerisi ten
     function armDown(ax) {
       if (P.sleeve) { cpx(ax, top + 1, 2, P.torsoH, PAL.skin); cpx(ax, top + 1, 2, P.sleeve, P.top); }
@@ -2513,28 +2517,41 @@
     if (pose.arm === 'fwd') {
       // öne uzatılmış kol (lale verirken)
       if (P.sleeve) {
-        cpx(d > 0 ? x + 9 : x - 7, top + 3, 7, 2, PAL.skin);
-        cpx(d > 0 ? x + 9 : x - 2, top + 3, 2, 2, P.top);
+        cpx(d > 0 ? x + bw + 1 : x - 7, top + 3, 7, 2, PAL.skin);
+        cpx(d > 0 ? x + bw + 1 : x - 2, top + 3, 2, 2, P.top);
       } else {
-        cpx(d > 0 ? x + 9 : x - 5, top + 3, 5, 2, P.top);
-        cpx(d > 0 ? x + 14 : x - 7, top + 3, 2, 2, PAL.skin);
+        cpx(d > 0 ? x + bw + 1 : x - 5, top + 3, 5, 2, P.top);
+        cpx(d > 0 ? x + bw + 6 : x - 7, top + 3, 2, 2, PAL.skin);
       }
     } else if (pose.arm !== 'hidden') {
       armDown(fwdSide + (d > 0 ? 0 : 1));
     }
-    var hy = top - 8;
-    cpx(x, hy, 8, 8, PAL.skin);
-    cpx(x - 1, hy - 1, 10, 3, P.hair);
-    if (P.hairLong) { cpx(x - 1, hy + 2, 2, 9, P.hair); cpx(x + 7, hy + 2, 2, 9, P.hair); }
-    else { cpx(x - 1, hy + 2, 1, 2, P.hair); cpx(x + 8, hy + 2, 1, 2, P.hair); cpx(x + 1, hy + 2, 2, 1, P.hair); }
+    // Kafa: gövdenin ortasında
+    var hx = x + Math.round((bw - hs) / 2);
+    var hy = top - hs;
+    cpx(hx, hy, hs, hs, PAL.skin);
+    cpx(hx - 1, hy - 1, hs + 2, 3, P.hair);
+    if (P.hairLong) { cpx(hx - 1, hy + 2, 2, hs + 1, P.hair); cpx(hx + hs - 1, hy + 2, 2, hs + 1, P.hair); }
+    else { cpx(hx - 1, hy + 2, 1, 2, P.hair); cpx(hx + hs, hy + 2, 1, 2, P.hair); cpx(hx + 1, hy + 2, 2, 1, P.hair); }
     var lk = pose.look || 0;
-    cpx(x + 2 + lk, hy + 4, 1, 1, P.eye || PAL.eye);
-    cpx(x + 5 + lk, hy + 4, 1, 1, P.eye || PAL.eye);
-    if (pose.blush) { cpx(x + 1, hy + 5, 1, 1, PAL.blush); cpx(x + 6, hy + 5, 1, 1, PAL.blush); }
-    if (pose.smile) { cpx(x + 3, hy + 6, 2, 1, PAL.mouth); }
+    var e1, e2, ey;
+    if (hs >= 8) { e1 = hx + 2 + lk; e2 = hx + 5 + lk; ey = hy + 4; }
+    else {
+      // küçük kafa: gözler yüzün içinde kalsın, arada en az bir piksel olsun
+      e1 = hx + 1 + (lk > 0 ? 1 : 0);
+      e2 = hx + hs - 2 + (lk < 0 ? -1 : 0);
+      ey = hy + Math.floor(hs / 2);
+    }
+    cpx(e1, ey, 1, 1, P.eye || PAL.eye);
+    cpx(e2, ey, 1, 1, P.eye || PAL.eye);
+    if (pose.blush) {
+      if (hs >= 8) { cpx(hx + 1, hy + 5, 1, 1, PAL.blush); cpx(hx + 6, hy + 5, 1, 1, PAL.blush); }
+      else { cpx(e1, ey + 1, 1, 1, PAL.blush); cpx(e2, ey + 1, 1, 1, PAL.blush); }
+    }
+    if (pose.smile) { cpx(hx + hs / 2 - 1, hs >= 8 ? hy + 6 : ey + 2, 2, 1, PAL.mouth); }
     // El: uzatılmışsa önde, değilse yanda (lale vücudun yanında, yüzü kapatmadan tutulur)
     var sideX = fwdSide + (d > 0 ? 0 : 1);
-    return { hand: pose.arm === 'fwd' ? { x: d > 0 ? x + 15 : x - 6, y: top + 3 } : { x: sideX + (d > 0 ? 1 : 0), y: top + P.torsoH - 1 }, headTop: hy - 1, cx: x + 4 };
+    return { hand: pose.arm === 'fwd' ? { x: d > 0 ? x + bw + 7 : x - 6, y: top + 3 } : { x: sideX + (d > 0 ? 1 : 0), y: top + P.torsoH - 1 }, headTop: hy - 1, cx: hx + hs / 2 };
   }
 
   // Bir-iki katlı eski tip bina cephesi (x'ten itibaren w genişlik, üst kenarı top)
@@ -2708,7 +2725,7 @@
     c.translate(iOX, iOY + Math.round(cam));
     drawBackground(t);
 
-    var FOOT = 104, ZX = 128, EX = 111;
+    var FOOT = 104, ZX = 129, EX = 111;
     var outDist = iW - iOX - EX + 24;                       // ekranın sağından çıkana kadar
     var together = seg(t, 5.0, 6.8);
     var efeX = lerp(-iOX - 16, EX, easeOut(seg(t, 0.4, 2.4))) + together * outDist;
