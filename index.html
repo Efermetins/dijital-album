@@ -21,9 +21,10 @@
 </head>
 <body>
 
-<!-- Açılış sahnesi (pixel art): uygulama her açıldığında oynar; bu sırada anılar ve
-     fotoğraflar arka planda yüklenir. Atlanamaz, kendi akışıyla biter. (script.js çizer ve kaldırır) -->
-<div class="splash" id="splash" role="status" aria-label="Dijital Albüm açılıyor">
+<!-- Açılış: önce oturum kontrol edilir (bu sırada sade zemin, "is-pending").
+     Oturum varsa pixel art sahne oynar; yoksa doğrudan giriş ekranı açılır ve sahne
+     giriş yapılınca oynar. Sahne atlanamaz, kendi akışıyla biter. (script.js yönetir) -->
+<div class="splash is-pending" id="splash" role="status" aria-label="Dijital Albüm açılıyor">
   <canvas class="intro-canvas" id="introCanvas" width="160" height="128" aria-hidden="true"></canvas>
   <div class="intro-title">
     <p class="intro-kicker">Efe <span class="amp">&amp;</span> Zeynep</p>

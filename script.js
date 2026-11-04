@@ -2827,7 +2827,7 @@
     introAnimDone = false;
     introContentReady = false;
     cancelAnimationFrame(introRaf);
-    splash.classList.remove('is-hidden', 'show-title', 'is-waiting', 'is-reduced');
+    splash.classList.remove('is-hidden', 'show-title', 'is-waiting', 'is-reduced', 'is-pending');
     clearTimeout(introTimer);
     introTimer = setTimeout(function () { introContentReady = true; maybeFinishIntro(); }, SPLASH_MAX_MS);
 
@@ -2848,6 +2848,13 @@
   // İçerik hazır (anılar + fotoğraflar yüklendi, ya da giriş ekranı gösterilecek)
   function hideSplash() {
     if (!splash) return;
+    if (!introVisible) {
+      // Sahne başlamadı (oturum yok): bekleme zeminini kısa bir solmayla kaldır → giriş ekranı
+      if (splash.classList.contains('is-hidden')) return;
+      if (reduced() && splash.animate) splash.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: 'ease-out' });
+      splash.classList.add('is-hidden');
+      return;
+    }
     introContentReady = true;
     maybeFinishIntro();
   }
@@ -2882,7 +2889,10 @@
     ]);
   }
 
-  showSplash(); // sayfa açılırken: oturum kontrolü sürüyor
+  // Açılışta sahne hemen BAŞLAMAZ: sade zemin (is-pending) görünürken oturum kontrol edilir.
+  //  - oturum varsa  → handleSession sahneyi başlatır, içerik hazır olunca uygulama açılır
+  //  - oturum yoksa → showLogin bekleme zeminini kaldırır, giriş ekranı açılır;
+  //                   giriş yapılınca handleSession sahneyi başlatır
 
   function columns() { return videoColumnMissing ? LEGACY_COLUMNS : MEMORY_COLUMNS; }
 
