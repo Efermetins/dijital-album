@@ -2477,3 +2477,40 @@ html[data-auth="loading"] .net-banner { display: none; }
 .net-whole { display: none; }
 .net-banner[data-kind="online"] .net-whole { display: inline; }
 .net-banner[data-kind="online"] .net-half { display: none; }
+
+/* ---------- BAĞLANTI DURUMU (sadece ana sayfa, sayfa akışında) ----------
+   Sabit değil: ana sayfanın en üstünde durur, aşağı kaydırınca diğer içerik gibi
+   kadrajdan çıkar. Diğer sayfalarda görünmez (ana sayfanın içinde olduğu için). */
+.net-inline {
+  position: absolute;
+  top: 1rem;
+  left: 50%;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  width: max-content;
+  max-width: calc(100% - 32px);
+  padding: 0.6rem 1rem 0.6rem 0.75rem;
+  border-radius: 16px;
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-border);
+  box-shadow: 0 14px 34px -18px var(--shadow-lift);
+  color: var(--ink);
+  font-size: 0.84rem;
+  font-weight: 500;
+  line-height: 1.3;
+  text-align: left;
+  transform: translate(-50%, -10px);
+  opacity: 0;
+  transition: transform 520ms var(--ease), opacity 360ms var(--ease);
+}
+
+.net-inline.is-shown { transform: translate(-50%, 0); opacity: 1; }
+
+.net-inline[data-kind="offline"] .net-half--l { transform: translate(-1.5px, 0.5px) rotate(-8deg); }
+.net-inline[data-kind="offline"] .net-half--r { transform: translate(1.5px, 0.5px) rotate(8deg); }
+.net-inline[data-kind="offline"] .net-heart { animation: net-sway 2.4s ease-in-out infinite; }
+.net-inline[data-kind="online"] .net-heart { animation: net-beat 0.7s ease-out 1; }
+.net-inline[data-kind="online"] .net-whole { display: inline; }
+.net-inline[data-kind="online"] .net-half { display: none; }

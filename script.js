@@ -3016,9 +3016,14 @@
   }
 
   /* ---- Bağlantı bildirimi ---- */
+  // İki bildirim: bağlantı durumu SADECE ana sayfada, sayfa akışında (netInline);
+  // internet gerektiren işlem uyarısı ise hangi sayfadaysa üstten kısa süreli (netBanner).
   var netBanner = document.getElementById('netBanner');
   var netText = document.getElementById('netText');
+  var netInline = document.getElementById('netInline');
+  var netInlineText = document.getElementById('netInlineText');
   var netTimer = null;
+  var netInlineTimer = null;
   var NET_TEXT = {
     offline: 'Bağlantını kontrol et — kayıtlı anıların görüntüleniyor',
     action: 'İnternet yok — bu işlem için bağlantı gerekiyor, bağlanınca tekrar dene',
@@ -3026,15 +3031,34 @@
   };
 
   function showNet(kind) {
-    if (!netBanner) return;
-    clearTimeout(netTimer);
-    netBanner.dataset.kind = kind;
-    netText.textContent = NET_TEXT[kind];
-    netBanner.hidden = false;
-    void netBanner.offsetWidth;
-    netBanner.classList.add('is-shown');
-    if (kind === 'online') netTimer = setTimeout(hideNet, 2200);
-    if (kind === 'action') netTimer = setTimeout(function () { if (isOffline()) showNet('offline'); else hideNet(); }, 3200);
+    if (kind === 'action') {
+      // işlem uyarısı: bulunduğu sayfada, üstten kısa süreli
+      if (!netBanner) return;
+      clearTimeout(netTimer);
+      netBanner.dataset.kind = kind;
+      netText.textContent = NET_TEXT[kind];
+      netBanner.hidden = false;
+      void netBanner.offsetWidth;
+      netBanner.classList.add('is-shown');
+      netTimer = setTimeout(hideNet, 3200);
+      return;
+    }
+    // bağlantı durumu (offline / online): ana sayfanın en üstünde
+    if (!netInline) return;
+    clearTimeout(netInlineTimer);
+    netInline.dataset.kind = kind;
+    netInlineText.textContent = NET_TEXT[kind];
+    netInline.hidden = false;
+    void netInline.offsetWidth;
+    netInline.classList.add('is-shown');
+    if (kind === 'online') netInlineTimer = setTimeout(hideNetInline, 2200);
+  }
+
+  function hideNetInline() {
+    if (!netInline) return;
+    clearTimeout(netInlineTimer);
+    netInline.classList.remove('is-shown');
+    netInlineTimer = setTimeout(function () { netInline.hidden = true; }, 600);
   }
 
   function hideNet() {
