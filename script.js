@@ -2650,6 +2650,12 @@
     [[0.1, 0.12, 20], [0.6, 0.28, 28], [0.3, 0.45, 16], [0.8, 0.6, 22], [0.15, 0.74, 18], [0.55, 0.88, 24], [0.9, 0.95, 14]].forEach(function (c, i) {
       var x = -iOX + ((c[0] * iW + t * (2 + i % 3)) % span) - 20;
       var y = skyTopY + c[1] * (40 - skyTopY);
+      if (titleRows) {
+        var endRow = y + iH + 150;                         // kamera gökyüzüne kaydıktan sonraki tuval satırı
+        if (endRow > titleRows[0] - 3 && endRow < titleRows[1] + 2) {
+          y += (endRow - titleRows[0] < titleRows[1] - endRow) ? titleRows[0] - 3 - endRow : titleRows[1] + 2 - endRow;
+        }
+      }
       cpx(x, y, c[2], 3, PAL.cloud); cpx(x + 4, y - 2, c[2] - 10, 2, PAL.cloud);
     });
     for (var s = 0; s < 18; s++) {
@@ -2713,7 +2719,7 @@
     drawStopSign(133, 60);
 
     // ---- tek kaldırım + cadde (dikey ekranda geniş bir bulvar gibi aşağı uzar) ----
-    var bottom = iH - iOY + 4;
+    var bottom = (iHD || iH) - iOY + 4;
     cpx(-iOX, 100, iW, 9, PAL.walk);
     for (var w = Math.floor(-iOX / 16) * 16; w < iW - iOX; w += 16) cpx(w, 100, 1, 9, PAL.walkLine);
     cpx(-iOX, 109, iW, 2, PAL.curb);
@@ -2744,7 +2750,8 @@
   /* ---- Çentik / durum çubuğu bölgesi: tuvalin üst kenarındaki gökyüzü rengiyle doldurulur.
      Aynı renk html/body zeminine ve theme-color'a da verilir (Safari üst çubuğu, beyaz yanıp sönme yok). */
   var themeMetas = Array.prototype.slice.call(document.querySelectorAll('meta[name="theme-color"]'));
-  var themeOriginal = themeMetas.map(function (m) { return m.getAttribute('content'); });
+  // data-orig: <head>'deki betik açılışta gökyüzü rengine çevirdiyse asıl değer orada
+  var themeOriginal = themeMetas.map(function (m) { return m.getAttribute('data-orig') || m.getAttribute('content'); });
   var skyEdgeColor = '';
 
   function hexMix(a, b, k) {
@@ -2785,7 +2792,7 @@
   function drawIntro(t) {
     var c = introCtx;
     c.setTransform(1, 0, 0, 1, 0, 0);
-    c.clearRect(0, 0, iW, iH);
+    c.clearRect(0, 0, iW, iHD || iH);
     var cam = (iH - iOY + 150) * easeInOut(seg(t, 6.0, 7.4)); // kamera gökyüzüne kayar (sokak tamamen aşağıda kalır)
     c.translate(iOX, iOY + Math.round(cam));
     drawBackground(t);
@@ -2831,9 +2838,12 @@
   // Tuvali ekran oranına göre boyutlandır: dikeyde üstte daha çok gökyüzü,
   // yatayda iki yana uzayan sokak. Sahne her zaman alt-ortada durur.
   var introSizedW = 0;   // sahne en son hangi ekran genişliğine göre boyutlandı
+  var iHD = 0;           // tuvalin çizilen yüksekliği (iH + ekran uzarsa görünecek pay)
+  var titleRows = null;  // yazının tuvaldeki satır aralığı
   function sizeIntro() {
     if (!introCtx) return;
     // yükseklik: çentiğin altındaki alan (sahne, durum çubuğu ayarından bağımsız aynı kalır)
+    introCanvas.style.height = '';
     var w = window.innerWidth || 390, h = introCanvas.clientHeight || window.innerHeight || 844;
     introSizedW = w;
     var aspect = w / h;
@@ -2841,9 +2851,23 @@
     else { iH = SCENE_H; iW = Math.min(480, Math.round(SCENE_H * aspect)); }
     iOX = Math.round((iW - SCENE_W) / 2);
     iOY = Math.round((iH - SCENE_H) * 0.72);               // dikeyde sokak alt kısımda, altında sadece cadde
+    // Ekranın olabilecek en uzun hâli kadar tuval: fazlası aşağıda kalır (cadde)
+    var sy = h / iH;
+    var tallest = Math.max(h, (window.screen && Math.max(screen.height, screen.width)) || 0, window.innerHeight || 0, splash.clientHeight || 0);
+    var extra = Math.ceil((tallest + 160 - h) / sy);   // +160: ekran beklenenden de uzarsa pay
+    iHD = iH + extra;
     introCanvas.width = iW;
-    introCanvas.height = iH;
+    introCanvas.height = iHD;
+    introCanvas.style.height = Math.round(iHD * sy) + 'px';
     introCtx.imageSmoothingEnabled = false;
+
+    // "Hoş Geldin" yazısının sahne sonunda kapladığı satırlar (bulutlar oraya düşmesin)
+    var kick = splash.querySelector('.intro-kicker'), head = splash.querySelector('.intro-heading');
+    var top0 = introCanvas.getBoundingClientRect().top;
+    if (kick && head) {
+      var a = kick.getBoundingClientRect().top - 12 - 16, b = head.getBoundingClientRect().bottom - 12 + 16; // -12: yazının giriş kayması
+      titleRows = [(a - top0) / sy, (b - top0) / sy];
+    } else titleRows = null;
   }
 
   function introFrame(now) {
@@ -2880,6 +2904,7 @@
         setTimeout(function () { if (token === introToken) cancelAnimationFrame(introRaf); }, 600);
       }
       // sayfa zemini hemen normale dönsün (splash solarken arkada uygulama görünür)
+      document.documentElement.classList.remove('intro-boot');
       document.documentElement.style.backgroundColor = '';
       document.body.style.backgroundColor = '';
       themeMetas.forEach(function (m, i) { m.setAttribute('content', themeOriginal[i]); });
@@ -2918,10 +2943,12 @@
   }
 
   // İçerik hazır (anılar + fotoğraflar yüklendi, ya da giriş ekranı gösterilecek)
-  function hideSplash() {
+  function hideSplash(now) {
     if (!splash) return;
+    if (now === true && introVisible) { introAnimDone = true; introContentReady = true; finishIntro(); return; }
     if (!introVisible) {
       // Sahne başlamadı (oturum yok): bekleme zeminini kısa bir solmayla kaldır → giriş ekranı
+      document.documentElement.classList.remove('intro-boot');
       if (splash.classList.contains('is-hidden')) return;
       if (reduced() && splash.animate) splash.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: 'ease-out' });
       splash.classList.add('is-hidden');
@@ -3030,7 +3057,7 @@
   function showLogin(message) {
     currentUser = null;
     loadToken++;
-    hideSplash();
+    hideSplash(true);
     closeDialog(true);
     clearRenderedMemories();
     clearWords();
@@ -3201,6 +3228,7 @@
   } else {
     // Supabase, bu dinleyicinin içinden başka Supabase çağrısı yapılmamasını önerir;
     // bu yüzden işi bir sonraki adıma erteliyoruz.
+    if (window.__introBoot) showSplash();
     sb.auth.onAuthStateChange(function (event, session) {
       setTimeout(function () { handleSession(session); }, 0);
     });

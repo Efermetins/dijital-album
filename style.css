@@ -216,10 +216,10 @@ button { font-family: inherit; cursor: pointer; color: inherit; }
    içerik hazır olunca yumuşakça solar. Dokunmak sahneyi kesmez. */
 .splash {
   position: fixed;
-  inset: 0;
-  width: 100vw;
-  height: 100vh;
-  height: 100dvh;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
   z-index: 100;
   overflow: hidden;
   background: #E6E1EF;            /* sahnenin gökyüzü rengi: tuval çizilmeden önce de uyumlu */
@@ -247,6 +247,7 @@ button { font-family: inherit; cursor: pointer; color: inherit; }
   left: 0;
   width: 100%;
   height: calc(100% - env(safe-area-inset-top, 0px));
+  z-index: 0;
   image-rendering: pixelated;
   image-rendering: crisp-edges;
 }
@@ -269,6 +270,7 @@ button { font-family: inherit; cursor: pointer; color: inherit; }
   transform: translateY(12px);
   transition: opacity 800ms var(--ease), transform 800ms var(--ease);
   pointer-events: none;
+  z-index: 2;
 }
 
 .splash.show-title .intro-title { opacity: 1; transform: none; }

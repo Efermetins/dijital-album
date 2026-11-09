@@ -2,9 +2,31 @@
 <html lang="tr" data-auth="loading">
 <head>
 <meta charset="UTF-8">
+<!-- İlk boyama: oturum açıksa açılış sahnesi oynayacak → JS ve yazı tipleri gelmeden önce bile
+     zemin gökyüzü rengi olsun (beyaz ekran yok). Oturum yoksa giriş ekranının sade zemini kalır. -->
+<style>
+  html.intro-boot, html.intro-boot body { background: #E4E2EF; }
+  html.intro-boot .splash.is-pending { background: #E4E2EF; }
+</style>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#FAFAF8" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0E0E0E" media="(prefers-color-scheme: dark)">
+<script>
+  (function () {
+    try {
+      for (var i = 0; i < localStorage.length; i++) {
+        var k = localStorage.key(i);
+        if (/^sb-.+-auth-token$/.test(k) && localStorage.getItem(k)) {
+          document.documentElement.classList.add('intro-boot');
+          var metas = document.getElementsByTagName('meta');
+          for (var j = 0; j < metas.length; j++) if (metas[j].name === 'theme-color') { metas[j].setAttribute('data-orig', metas[j].content); metas[j].content = '#E4E2EF'; }
+          window.__introBoot = true;
+          break;
+        }
+      }
+    } catch (e) {}
+  })();
+</script>
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <title>Dijital Albüm</title>
@@ -16,7 +38,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <!-- Başlıklar: Nunito (yuvarlak hatlı) · Gövde: Inter · Polaroid notu: Caveat (el yazısı) — üçü de Türkçe harflerin tamamını içerir -->
-<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600&family=Inter:wght@400;500;600&family=Nunito:wght@500;600;700;800&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600&family=Inter:wght@400;500;600&family=Nunito:wght@500;600;700;800&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;600&family=Inter:wght@400;500;600&family=Nunito:wght@500;600;700;800&display=swap" rel="stylesheet"></noscript>
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
