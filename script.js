@@ -2741,6 +2741,47 @@
     cpx(sx + 5, 98, 4, 4, PAL.wheel); cpx(sx + 15, 98, 4, 4, PAL.wheel);
   }
 
+  /* ---- Çentik / durum çubuğu bölgesi: tuvalin üst kenarındaki gökyüzü rengiyle doldurulur.
+     Aynı renk html/body zeminine ve theme-color'a da verilir (Safari üst çubuğu, beyaz yanıp sönme yok). */
+  var themeMetas = Array.prototype.slice.call(document.querySelectorAll('meta[name="theme-color"]'));
+  var themeOriginal = themeMetas.map(function (m) { return m.getAttribute('content'); });
+  var skyEdgeColor = '';
+
+  function hexMix(a, b, k) {
+    var pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16), out = '#';
+    [16, 8, 0].forEach(function (s) {
+      var v = Math.round(((pa >> s) & 255) + (((pb >> s) & 255) - ((pa >> s) & 255)) * k);
+      out += (v < 16 ? '0' : '') + v.toString(16);
+    });
+    return out;
+  }
+
+  // drawBackground'daki gökyüzü degradesinin verilen sahne y'sindeki rengi
+  function skyColorAt(y) {
+    var top = -(iH + 150) - 10;
+    var k = Math.max(0, Math.min(1, (y - top) / (66 - top)));
+    return k < 0.55 ? hexMix(PAL.skyTop, PAL.skyMid, k / 0.55) : hexMix(PAL.skyMid, PAL.sky, (k - 0.55) / 0.45);
+  }
+
+  function setSkyEdge(col) {
+    if (col === skyEdgeColor) return;
+    skyEdgeColor = col;
+    splash.style.backgroundColor = col;
+    document.documentElement.style.backgroundColor = col;
+    document.body.style.backgroundColor = col;
+    themeMetas.forEach(function (m) { m.setAttribute('content', col); });
+  }
+
+  function paintSkyEdge(sceneY) { setSkyEdge(skyColorAt(sceneY)); }
+
+  function clearSkyEdge() {
+    skyEdgeColor = '';
+    splash.style.backgroundColor = '';
+    document.documentElement.style.backgroundColor = '';
+    document.body.style.backgroundColor = '';
+    themeMetas.forEach(function (m, i) { m.setAttribute('content', themeOriginal[i]); });
+  }
+
   function drawIntro(t) {
     var c = introCtx;
     c.setTransform(1, 0, 0, 1, 0, 0);
@@ -2748,6 +2789,7 @@
     var cam = (iH - iOY + 150) * easeInOut(seg(t, 6.0, 7.4)); // kamera gökyüzüne kayar (sokak tamamen aşağıda kalır)
     c.translate(iOX, iOY + Math.round(cam));
     drawBackground(t);
+    paintSkyEdge(-(iOY + Math.round(cam)));
 
     var FOOT = 104, ZX = 128, EX = 111;
     var outDist = iW - iOX - EX + 24;                       // ekranın sağından çıkana kadar
@@ -2791,7 +2833,8 @@
   var introSizedW = 0;   // sahne en son hangi ekran genişliğine göre boyutlandı
   function sizeIntro() {
     if (!introCtx) return;
-    var w = window.innerWidth || 390, h = window.innerHeight || 844;
+    // yükseklik: çentiğin altındaki alan (sahne, durum çubuğu ayarından bağımsız aynı kalır)
+    var w = window.innerWidth || 390, h = introCanvas.clientHeight || window.innerHeight || 844;
     introSizedW = w;
     var aspect = w / h;
     if (aspect < SCENE_W / SCENE_H) { iW = SCENE_W; iH = Math.min(420, Math.round(SCENE_W / aspect)); }
@@ -2836,6 +2879,11 @@
         splash.classList.add('is-hidden');
         setTimeout(function () { if (token === introToken) cancelAnimationFrame(introRaf); }, 600);
       }
+      // sayfa zemini hemen normale dönsün (splash solarken arkada uygulama görünür)
+      document.documentElement.style.backgroundColor = '';
+      document.body.style.backgroundColor = '';
+      themeMetas.forEach(function (m, i) { m.setAttribute('content', themeOriginal[i]); });
+      setTimeout(function () { if (token === introToken && !introVisible) clearSkyEdge(); }, 650);
     });
   }
 
