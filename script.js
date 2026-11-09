@@ -31,7 +31,22 @@
   // Çevrimdışı destek: uygulama dosyaları ve görüntülenen fotoğraflar önbelleğe alınır (sw.js)
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     window.addEventListener('load', function () {
-      navigator.serviceWorker.register('sw.js').catch(function () { /* desteklenmiyorsa uygulama yine çalışır */ });
+      var hadController = !!navigator.serviceWorker.controller;
+      var swReloaded = false;
+      navigator.serviceWorker.register('sw.js').then(function (reg) {
+        // Uygulama her öne geldiğinde yeni sürüm var mı diye bak
+        document.addEventListener('visibilitychange', function () {
+          if (document.visibilityState === 'visible') reg.update().catch(function () {});
+        });
+      }).catch(function () { /* desteklenmiyorsa uygulama yine çalışır */ });
+      // Yeni sürüm devreye girdi: sayfayı bir kez yenile (anı eklerken araya girme)
+      navigator.serviceWorker.addEventListener('controllerchange', function () {
+        if (!hadController || swReloaded) { hadController = true; return; }
+        var busy = function () { var m = document.getElementById('addModal'); return m && !m.hidden; };
+        var doReload = function () { if (swReloaded) return; swReloaded = true; location.reload(); };
+        if (!busy()) { doReload(); return; }
+        var wait = setInterval(function () { if (!busy()) { clearInterval(wait); doReload(); } }, 1500);
+      });
     });
   }
 
@@ -3748,6 +3763,48 @@
     mediaPickFrame.innerHTML = '';
     mediaPick.hidden = true;
     setPickFlip(false);
+    if (mediaFlipHint) mediaFlipHint.textContent = FLIP_HINT;
+  }
+
+  var mediaFlipHint = document.getElementById('mediaFlipHint');
+  var FLIP_HINT = 'Ön kamerayla çektiğin görüntü ters göründüyse dokun.';
+  var FLIP_HINT_AUTO = 'Ön kamerayla çekildi; çekerken gördüğün gibi kaydedilecek. İstemezsen dokun.';
+  var FRESH_MS = 15 * 60 * 1000;   // "şimdi çekildi" sayılan süre
+
+  // Dosyanın baş (ve videoda son) kısmında ön kamera izi ve çekim zamanı ara.
+  // iPhone fotoğrafın EXIF'ine LensModel olarak "iPhone 15 front camera ..." yazar;
+  // videoda da benzer bir metin (lens_model) bulunur.
+  function readText(blob) {
+    return new Promise(function (resolve) {
+      var fr = new FileReader();
+      fr.onload = function () {
+        var b = new Uint8Array(fr.result), s = '';
+        for (var i = 0; i < b.length; i++) s += String.fromCharCode(b[i] >= 32 && b[i] < 127 ? b[i] : 32);
+        resolve(s);
+      };
+      fr.onerror = function () { resolve(''); };
+      fr.readAsArrayBuffer(blob);
+    });
+  }
+
+  function shotTime(text) {
+    var m = text.match(/(20\d\d)[:-](\d\d)[:-](\d\d)[ T](\d\d):(\d\d):(\d\d)/);
+    if (!m) return null;
+    return new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime();
+  }
+
+  function detectFrontCamera(file, kind) {
+    var head = file.slice(0, kind === 'video' ? 1024 * 1024 : 256 * 1024);
+    var parts = [readText(head)];
+    if (kind === 'video' && file.size > 1024 * 1024) parts.push(readText(file.slice(Math.max(1024 * 1024, file.size - 1024 * 1024))));
+    return Promise.all(parts).then(function (texts) {
+      var text = texts.join(' ');
+      if (!/front( truedepth)? camera|frontcamera|camera\.lens_model[^]{0,80}front/i.test(text)) return false;
+      // Galeriden seçilen eski selfie'ler iPhone Kamera'da zaten senin ayarınla kaydedilmiştir: dokunma
+      var t = shotTime(text);
+      if (t === null) return true;
+      return Math.abs(Date.now() - t) < FRESH_MS;
+    }).catch(function () { return false; });
   }
 
   function showPick() {
@@ -3755,6 +3812,11 @@
     var file = memPhoto.files && memPhoto.files[0];
     var kind = file ? mediaKind(file) : null;
     if (!kind) return;
+    detectFrontCamera(file, kind).then(function (front) {
+      if (!front || !memPhoto.files || memPhoto.files[0] !== file) return;
+      setPickFlip(true);
+      if (mediaFlipHint) mediaFlipHint.textContent = FLIP_HINT_AUTO;
+    });
     pickUrl = URL.createObjectURL(file);
     var el = document.createElement(kind === 'video' ? 'video' : 'img');
     el.src = pickUrl;
