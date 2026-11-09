@@ -497,7 +497,7 @@
     var src = escapeAttr(media.src);
     if (media.type === 'video') {
       // #t=0.1: otomatik oynatma kapalıyken de ilk kare görünsün
-      return '<video class="media-preview" src="' + src + '#t=0.1" muted loop playsinline preload="metadata" disablepictureinpicture tabindex="-1" aria-hidden="true"></video>' +
+      return '<video class="media-preview' + (media.mirror ? ' is-mirrored' : '') + '" src="' + src + '#t=0.1" muted loop playsinline preload="metadata" disablepictureinpicture tabindex="-1" aria-hidden="true"></video>' +
         '<span class="media-badge">' + PLAY_SVG + '</span>';
     }
     return '<img src="' + src + '" alt="" decoding="async">';
@@ -879,7 +879,7 @@
     if (type === 'video' && src) {
       card.dataset.kind = 'video';
       el = document.createElement('video');
-      el.className = 'lb-video';
+      el.className = 'lb-video' + (item.dataset.mediaMirror === '1' ? ' is-mirrored' : '');
       el.src = src;
       el.controls = false;          // oynat/duraklat, ilerleme çubuğu yok
       el.loop = true;               // bitince başa sarıp devam eder
@@ -2275,7 +2275,7 @@
       var media = en.media && en.media.src ? en.media : null;
       return {
         key: key,
-        dataset: { mediaType: media ? media.type : '', mediaSrc: media ? media.src : '', caption: en.title || '', memoryId: en.memoryId || '' },
+        dataset: { mediaType: media ? media.type : '', mediaSrc: media ? media.src : '', mediaMirror: media && media.mirror ? '1' : '', caption: en.title || '', memoryId: en.memoryId || '' },
         // Kapanış animasyonu için etiketin küçük fotoğrafı (liste yeniden çizilmiş olabilir)
         thumb: function () { return timelineList.querySelector('.timeline-item[data-entry-key="' + key + '"] .timeline-media'); }
       };
@@ -3261,12 +3261,15 @@
     });
   }
 
+  // "Çevir" ile kaydedilen videolar: dosya adı "-mirror" ile biter (veritabanında ek alan gerekmez)
+  function isMirroredPath(path) { return /-mirror\.[a-z0-9]+$/i.test(path || ''); }
+
   function attachMediaUrls(rows) {
     var photos = rows.map(function (r) { return r.photo_url; }).filter(Boolean);
     var videos = rows.map(function (r) { return r.video_url; }).filter(Boolean);
     return Promise.all([signPaths(PHOTO_BUCKET, photos), signPaths(VIDEO_BUCKET, videos)]).then(function (maps) {
       rows.forEach(function (r) {
-        if (r.video_url && maps[1][r.video_url]) r.media = { type: 'video', src: maps[1][r.video_url] };
+        if (r.video_url && maps[1][r.video_url]) r.media = { type: 'video', src: maps[1][r.video_url], mirror: isMirroredPath(r.video_url) };
         else if (r.photo_url && maps[0][r.photo_url]) r.media = { type: 'photo', src: maps[0][r.photo_url] };
         else r.media = null;
       });
@@ -3395,6 +3398,7 @@
     if (media && media.src) {
       btn.dataset.mediaType = media.type;
       btn.dataset.mediaSrc = media.src;
+      if (media.mirror) btn.dataset.mediaMirror = '1';
     }
     btn.innerHTML = '<div class="gallery-media">' + thumbHTML(media) + '</div>';
     // En yeni anı en başta, ama "Anı ekle" kalp kartının hemen arkasında
@@ -3719,7 +3723,81 @@
   });
   document.addEventListener('visibilitychange', function () { if (document.visibilityState === 'visible') fillTodayDate(); });
 
+  /* ---- Seçilen fotoğraf / video: önizleme ve "Çevir" (yatay aynalama) ----
+     iPhone'da uygulama içinden açılan ön kamera "Ön Kamerayı Aynala" ayarını uygulamaz;
+     selfie, çekerken görünenin tersi kaydedilir. "Çevir" ile düzeltilir:
+       - fotoğraf: pikseller canvas ile gerçekten çevrilir (EXIF yönü korunarak), JPEG yüklenir
+       - video: dosya adına "-mirror" eklenir, uygulama her yerde aynalanmış gösterir */
+  var memPhoto = document.getElementById('memPhoto');
+  var mediaPick = document.getElementById('mediaPick');
+  var mediaPickFrame = document.getElementById('mediaPickFrame');
+  var mediaFlip = document.getElementById('mediaFlip');
+  var pickFlip = false;
+  var pickUrl = null;
+  var MAX_CANVAS_PIXELS = 16000000;   // iPhone tuval sınırının altında kal
+
+  function setPickFlip(on) {
+    pickFlip = on;
+    mediaFlip.setAttribute('aria-pressed', String(on));
+    mediaPickFrame.classList.toggle('is-flipped', on);
+  }
+
+  function clearPick() {
+    if (pickUrl) URL.revokeObjectURL(pickUrl);
+    pickUrl = null;
+    mediaPickFrame.innerHTML = '';
+    mediaPick.hidden = true;
+    setPickFlip(false);
+  }
+
+  function showPick() {
+    clearPick();
+    var file = memPhoto.files && memPhoto.files[0];
+    var kind = file ? mediaKind(file) : null;
+    if (!kind) return;
+    pickUrl = URL.createObjectURL(file);
+    var el = document.createElement(kind === 'video' ? 'video' : 'img');
+    el.src = pickUrl;
+    if (kind === 'video') { el.muted = true; el.loop = true; el.autoplay = true; el.playsInline = true; el.setAttribute('playsinline', ''); }
+    else el.alt = '';
+    mediaPickFrame.appendChild(el);
+    mediaPick.hidden = false;
+  }
+
+  if (memPhoto && mediaPick) {
+    memPhoto.addEventListener('change', showPick);
+    mediaFlip.addEventListener('click', function () { setPickFlip(!pickFlip); });
+  }
+
+  // Fotoğrafı yatay çevir: <img> EXIF yönünü uygular, canvas'a aynalanmış çizilir
+  function flipImageFile(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload = function () {
+        var w = img.naturalWidth, h = img.naturalHeight;
+        var k = Math.min(1, Math.sqrt(MAX_CANVAS_PIXELS / (w * h)));
+        w = Math.round(w * k); h = Math.round(h * k);
+        var c = document.createElement('canvas');
+        c.width = w; c.height = h;
+        var g = c.getContext('2d');
+        g.translate(w, 0);
+        g.scale(-1, 1);
+        g.drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        c.toBlob(function (blob) {
+          if (!blob) { reject(new Error('Fotoğraf çevrilemedi.')); return; }
+          var base = (file.name || 'foto').replace(/\.[^.]+$/, '');
+          resolve(new File([blob], base + '.jpg', { type: 'image/jpeg' }));
+        }, 'image/jpeg', 0.92);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('Fotoğraf okunamadı.')); };
+      img.src = url;
+    });
+  }
+
   if (form) {
+    form.addEventListener('reset', function () { setTimeout(clearPick, 0); });
     var submitBtn = form.querySelector('[type="submit"]');
 
     form.addEventListener('submit', function (e) {
@@ -3756,16 +3834,25 @@
       }
 
       var bucket = kind === 'video' ? VIDEO_BUCKET : PHOTO_BUCKET;
-      var path = file ? currentUser.id + '/' + uniqueId() + fileExtension(file, kind) : null;
+      var flip = !!file && pickFlip;
+      var mirrorVideo = kind === 'video' && flip;
+      var path = null;
       submitBtn.disabled = true;
       formStatus.textContent = kind === 'video' ? 'Video yükleniyor… (büyük dosyalarda biraz sürebilir)'
-        : kind === 'photo' ? 'Fotoğraf yükleniyor...' : 'Kaydediliyor...';
+        : kind === 'photo' ? (flip ? 'Fotoğraf çevriliyor...' : 'Fotoğraf yükleniyor...') : 'Kaydediliyor...';
 
-      var upload = file
-        ? sb.storage.from(bucket).upload(path, file, { contentType: contentTypeOf(file, kind), upsert: false })
-        : Promise.resolve({ error: null });
+      // "Çevir" seçildiyse: fotoğrafın pikselleri çevrilir; videonun dosya adı işaretlenir
+      var prepared = kind === 'photo' && flip ? flipImageFile(file) : Promise.resolve(file);
 
-      upload
+      prepared
+        .then(function (f) {
+          file = f;
+          if (!file) return { error: null };
+          if (kind === 'photo' && file.size > MAX_PHOTO_BYTES) throw { message: 'too large' };
+          path = currentUser.id + '/' + uniqueId() + (mirrorVideo ? '-mirror' : '') + fileExtension(file, kind);
+          if (kind === 'photo') formStatus.textContent = 'Fotoğraf yükleniyor...';
+          return sb.storage.from(bucket).upload(path, file, { contentType: contentTypeOf(file, kind), upsert: false });
+        })
         .then(function (res) {
           if (res.error) throw res.error;
           formStatus.textContent = 'Kaydediliyor...';
@@ -3777,7 +3864,7 @@
           if (res.error) throw res.error;
           var row = res.data;
           // Yeni dosyayı hemen göster; sonraki açılışlarda imzalı link kullanılır
-          row.media = file ? { type: kind, src: URL.createObjectURL(file) } : null;
+          row.media = file ? { type: kind, src: URL.createObjectURL(file), mirror: mirrorVideo } : null;
           // Galeri bir fotoğraf/video arşivi: sadece medyası olan anılar girer
           if (row.media) addToGallery(row.id, row.title, row.media);
           addTimelineMemory(row);

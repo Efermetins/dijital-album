@@ -401,6 +401,19 @@
           <small class="form-hint" id="memMediaHint">Fotoğraf en fazla 15 MB, video (MP4, MOV, WEBM) en fazla 100 MB.</small>
         </label>
 
+        <!-- Seçilen fotoğraf/videonun önizlemesi. iPhone, uygulama içinden açılan ön kamerada
+             "Ön Kamerayı Aynala" ayarını uygulamıyor; ters kaydedilen selfie "Çevir" ile düzeltilir. -->
+        <div class="media-pick" id="mediaPick" hidden>
+          <div class="media-pick-frame" id="mediaPickFrame"></div>
+          <div class="media-pick-side">
+            <button type="button" class="media-flip" id="mediaFlip" aria-pressed="false">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3.5v17" stroke-dasharray="2 2.2"/><path d="M9 7 3.5 17H9z"/><path d="M15 7l5.5 10H15z" fill="currentColor"/></svg>
+              <span>Çevir</span>
+            </button>
+            <small class="form-hint">Ön kamerayla çektiğin görüntü ters göründüyse dokun.</small>
+          </div>
+        </div>
+
         <button type="submit" class="btn-primary">Anıyı Ekle</button>
         <p class="form-status" id="formStatus" role="status" aria-live="polite"></p>
       </form>
