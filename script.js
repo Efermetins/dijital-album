@@ -397,9 +397,12 @@
     return PAGES.indexOf(id) >= 0 ? id : 'anasayfa';
   }
 
+  // Her sayfa kendi içinde kayar (body kaymaz)
+  function pageEl(id) { return id ? document.getElementById(id) : null; }
+
   function jumpScroll(y) {
-    // html'deki "scroll-behavior: smooth" devreye girmesin: anında
-    try { window.scrollTo({ top: y, left: 0, behavior: 'instant' }); } catch (err) { window.scrollTo(0, y); }
+    var s = pageEl(currentPage);
+    if (s) s.scrollTop = y;
   }
 
   function showPage(id, opts) {
@@ -408,10 +411,13 @@
     var prev = currentPage;
     if (prev === id) {
       // aynı sekmeye tekrar basıldı: sayfanın başına yumuşakça
-      if (!opts.silent) window.scrollTo({ top: 0, behavior: reduced() ? 'auto' : 'smooth' });
+      var same = pageEl(id);
+      if (!opts.silent && same) {
+        try { same.scrollTo({ top: 0, behavior: reduced() ? 'auto' : 'smooth' }); } catch (err) { same.scrollTop = 0; }
+      }
       return;
     }
-    if (prev) pageScroll[prev] = window.pageYOffset;
+    if (prev && pageEl(prev)) pageScroll[prev] = pageEl(prev).scrollTop;
     currentPage = id;
     document.documentElement.setAttribute('data-page', id);
     PAGES.forEach(function (p) {
@@ -964,7 +970,7 @@
     var photo = card.firstChild;
     var cs = getComputedStyle(slide);
     var availW = document.documentElement.clientWidth - (parseFloat(cs.paddingLeft) || 0) - (parseFloat(cs.paddingRight) || 0);
-    var availH = window.innerHeight - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
+    var availH = (slide.clientHeight || window.innerHeight) - (parseFloat(cs.paddingTop) || 0) - (parseFloat(cs.paddingBottom) || 0);
     if (availW < 60 || availH < 60) return;
     var a = slide._aspect || 0.75;
     var p = clamp(Math.round(Math.min(availW, availH * a) * 0.045), 10, 20); // kenar çerçevesi
@@ -2189,6 +2195,7 @@
   /* ---- Kaydırma: o an bakılan dönemi bul (normal sayfa kaydırması) ---- */
 
   function timelineVisible() { return currentPage === 'ani-cetveli'; }
+  var tlScroller = document.getElementById('ani-cetveli');   // cetvel sayfası kendi içinde kayar
 
   // Üstte sabit duran başlık + araç çubuğunun alt kenarı (ekran koordinatı)
   function stickyBottom() {
@@ -2200,8 +2207,9 @@
   function scrollPosition() {
     var n = tlPeriods.length;
     if (!n) return 0;
-    var nearBottom = window.innerHeight + window.pageYOffset >= document.documentElement.scrollHeight - 4;
-    if (nearBottom && window.pageYOffset > 0) return n - 1;
+    var s = tlScroller;
+    var nearBottom = s.clientHeight + s.scrollTop >= s.scrollHeight - 4;
+    if (nearBottom && s.scrollTop > 0) return n - 1;
     var line = stickyBottom() + 60;
     var idx = 0;
     for (var i = 0; i < n; i++) {
@@ -2227,7 +2235,7 @@
   }
 
   var scrollRaf = 0;
-  window.addEventListener('scroll', function () {
+  tlScroller.addEventListener('scroll', function () {
     if (scrollRaf || !timelineVisible()) return;
     scrollRaf = requestAnimationFrame(function () { scrollRaf = 0; syncToScroll(); });
   }, { passive: true });
@@ -2238,15 +2246,15 @@
     if (!timelineVisible()) { tlPendingKey = key; return; }
     var el = periodEls[key];
     if (!el) return;
-    var top = window.pageYOffset + el.getBoundingClientRect().top - stickyBottom() - 10;
-    window.scrollTo({ top: Math.max(0, top), behavior: smooth && !reduced() ? 'smooth' : 'instant' });
+    var top = tlScroller.scrollTop + el.getBoundingClientRect().top - stickyBottom() - 10;
+    tlScroller.scrollTo({ top: Math.max(0, top), behavior: smooth && !reduced() ? 'smooth' : 'instant' });
   }
 
   function scrollTimelineToTop() {
     if (!timelineVisible()) { tlPendingKey = null; return; }
     var panel = document.getElementById('timelinePanel');
-    var top = window.pageYOffset + panel.getBoundingClientRect().top - (siteHeaderEl ? siteHeaderEl.offsetHeight : 0) - 12;
-    if (window.pageYOffset > top) window.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
+    var top = tlScroller.scrollTop + panel.getBoundingClientRect().top - (siteHeaderEl ? siteHeaderEl.offsetHeight : 0) - 12;
+    if (tlScroller.scrollTop > top) tlScroller.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
   }
 
   // Bakılan tarih: dönemin en yeni anısı (yoksa dönemin kendisi)
@@ -2315,7 +2323,7 @@
     var el = key && periodEls[key];
     var offset = el ? el.getBoundingClientRect().top : 0;
     renderTimeline();
-    if (periodEls[key]) window.scrollBy({ top: periodEls[key].getBoundingClientRect().top - offset, behavior: 'instant' });
+    if (periodEls[key]) tlScroller.scrollBy({ top: periodEls[key].getBoundingClientRect().top - offset, behavior: 'instant' });
     syncToScroll();
   }
 
