@@ -10,7 +10,7 @@
      eski kabuk önbelleği silinir, güncelleme kullanıcıya ulaşır.
    - Kapsam: sw.js, index.html ile aynı klasörde → GitHub Pages'te /dijital-album/.
    ========================================================= */
-const VERSION = '557f4c1436e8';
+const VERSION = 'adffaa48549c';
 const DEV = VERSION.indexOf('__') === 0;        // yerel sunucu (npm start): önce ağ
 const SHELL = 'shell-' + (DEV ? 'dev' : VERSION);
 const FONTS = 'fonts-v1';

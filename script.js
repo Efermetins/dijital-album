@@ -76,38 +76,72 @@
     if (schemeMq.addEventListener) schemeMq.addEventListener('change', function () { setTimeout(syncBottomColor, 60); });
   }
 
-  /* ---- ?debug=1 : telefonda yüksekliği ölçmek için ----
+  /* ---- Yükseklik ölçümü (debug) ----
+     Açmak: adreste ?debug=1 (Safari) ya da Ayarlar başlığına arka arkaya 5 dokunuş
+     (ana ekran uygulamasında adres çubuğu yok). ?debug=0 ya da yine 5 dokunuş kapatır.
      Ortada ölçümler; en üst 2 px mavi, en alt 2 px kırmızı çizgi (ikisi de görünüyorsa
-     katmanlar ekranı tam kaplıyor). Parametre yoksa hiçbir şey eklenmez. */
-  if (/[?&]debug=1(&|$)/.test(location.search)) {
-    var dbgBox = document.createElement('div');
-    dbgBox.className = 'debug-box';
-    var dbgTop = document.createElement('div'); dbgTop.className = 'debug-line debug-line--top';
-    var dbgBot = document.createElement('div'); dbgBot.className = 'debug-line debug-line--bottom';
-    var dbgProbe = document.createElement('div');
-    dbgProbe.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;' +
-      'padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);';
-    document.body.appendChild(dbgProbe);
-    document.body.appendChild(dbgTop);
-    document.body.appendChild(dbgBot);
-    document.body.appendChild(dbgBox);
-    var dbgUpdate = function () {
-      var cs = getComputedStyle(dbgProbe), de = document.documentElement;
-      dbgBox.textContent = [
-        'innerHeight      ' + window.innerHeight,
-        'screen.height    ' + (window.screen ? screen.height : '-'),
-        'visualViewport   ' + (window.visualViewport ? Math.round(window.visualViewport.height) : '-'),
-        '--app-height     ' + (getComputedStyle(de).getPropertyValue('--app-height').trim() || '-'),
-        'standalone       ' + !!(window.__appHeight && window.__appHeight.standalone),
-        'safe-area top    ' + cs.paddingTop,
-        'safe-area bottom ' + cs.paddingBottom,
-        'zemin            ' + (de.style.backgroundColor || 'css')
-      ].join('\n');
-    };
-    dbgUpdate();
-    setInterval(dbgUpdate, 500);
-    window.addEventListener('resize', dbgUpdate);
+     katmanlar ekranı tam kaplıyor). Kapalıyken hiçbir şey eklenmez. */
+  var DEBUG_KEY = 'dijital-album:debug';
+  var dbgEls = null, dbgTimer = 0;
+
+  function debugStored() { try { return localStorage.getItem(DEBUG_KEY) === '1'; } catch (e) { return false; } }
+  function debugStore(on) { try { if (on) localStorage.setItem(DEBUG_KEY, '1'); else localStorage.removeItem(DEBUG_KEY); } catch (e) {} }
+
+  function debugUpdate() {
+    if (!dbgEls) return;
+    var cs = getComputedStyle(dbgEls.probe), de = document.documentElement;
+    var dm = !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+    dbgEls.box.textContent = [
+      'mod              ' + (window.__appHeight && window.__appHeight.standalone ? 'ana ekran' : 'Safari / tarayıcı'),
+      'innerHeight      ' + window.innerHeight,
+      'screen.height    ' + (window.screen ? screen.height : '-'),
+      'visualViewport   ' + (window.visualViewport ? Math.round(window.visualViewport.height) : '-'),
+      '--app-height     ' + (getComputedStyle(de).getPropertyValue('--app-height').trim() || '-'),
+      'standalone       ' + !!(window.__appHeight && window.__appHeight.standalone) + ' (nav ' + (window.navigator.standalone === true) + ', css ' + dm + ')',
+      'safe-area top    ' + cs.paddingTop,
+      'safe-area bottom ' + cs.paddingBottom,
+      'zemin            ' + (de.style.backgroundColor || 'css')
+    ].join(String.fromCharCode(10));
   }
+
+  function startDebug() {
+    if (dbgEls) return;
+    var mk = function (cls) { var d = document.createElement('div'); d.className = cls; document.body.appendChild(d); return d; };
+    var probe = document.createElement('div');
+    probe.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;' +
+      'padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);';
+    document.body.appendChild(probe);
+    dbgEls = { probe: probe, top: mk('debug-line debug-line--top'), bot: mk('debug-line debug-line--bottom'), box: mk('debug-box') };
+    debugUpdate();
+    dbgTimer = setInterval(debugUpdate, 500);
+  }
+
+  function stopDebug() {
+    if (!dbgEls) return;
+    clearInterval(dbgTimer);
+    ['probe', 'top', 'bot', 'box'].forEach(function (k) { dbgEls[k].remove(); });
+    dbgEls = null;
+  }
+
+  if (/[?&]debug=0(&|$)/.test(location.search)) debugStore(false);
+  if (/[?&]debug=1(&|$)/.test(location.search)) debugStore(true);
+  if (debugStored()) startDebug();
+  window.addEventListener('resize', debugUpdate);
+
+  // Ayarlar başlığına 5 dokunuş: aç / kapat
+  (function () {
+    var title = document.querySelector('#ayarlar .section-title');
+    if (!title) return;
+    var taps = 0, last = 0;
+    title.addEventListener('click', function () {
+      var now = Date.now();
+      taps = now - last < 600 ? taps + 1 : 1;
+      last = now;
+      if (taps < 5) return;
+      taps = 0;
+      if (dbgEls) { stopDebug(); debugStore(false); } else { startDebug(); debugStore(true); }
+    });
+  })();
 
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     window.addEventListener('load', function () {
