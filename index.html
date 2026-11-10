@@ -227,19 +227,20 @@
       <p class="section-lede">Başladığımız günden bugüne, önemli anlarımız</p>
     </div>
 
-    <div class="timeline-panel" id="timelinePanel">
-      <div class="timeline-toolbar">
-        <div class="period-heading">
-          <span class="period-label" id="periodLabel" aria-live="polite"></span>
-          <span class="period-count" id="periodCount"></span>
-        </div>
-        <div class="segmented" role="group" aria-label="Anı cetveli görünümü">
-          <button type="button" class="segmented-btn" data-mode="week" aria-pressed="false">Haftalık</button>
-          <button type="button" class="segmented-btn" data-mode="month" aria-pressed="true">Aylık</button>
-          <button type="button" class="segmented-btn" data-mode="year" aria-pressed="false">Yıllık</button>
-        </div>
+    <!-- Dönem + görünüm seçici: kaydırma alanının en üstüne yapışır (tam genişlik, opak) -->
+    <div class="timeline-toolbar">
+      <div class="period-heading">
+        <span class="period-label" id="periodLabel" aria-live="polite"></span>
+        <span class="period-count" id="periodCount"></span>
       </div>
+      <div class="segmented" role="group" aria-label="Anı cetveli görünümü">
+        <button type="button" class="segmented-btn" data-mode="week" aria-pressed="false">Haftalık</button>
+        <button type="button" class="segmented-btn" data-mode="month" aria-pressed="true">Aylık</button>
+        <button type="button" class="segmented-btn" data-mode="year" aria-pressed="false">Yıllık</button>
+      </div>
+    </div>
 
+    <div class="timeline-panel" id="timelinePanel">
       <div class="timeline-body">
         <!-- Tüm dönemler tek listede, en yeniden en eskiye; normal sayfa kaydırmasıyla akar -->
         <div class="timeline-scroller" id="timelineScroller" aria-label="Anılar (en yeniden en eskiye)">

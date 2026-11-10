@@ -2306,6 +2306,7 @@
 
     if (tlPeriods.indexOf(tlKey) === -1) tlKey = tlPeriods[0] || null;
     syncToScroll();
+    if (timelineVisible()) observePeriodTitles();
     observePreviews(timelineList);
   }
 
@@ -2315,9 +2316,9 @@
   var tlScroller = document.getElementById('ani-cetveli');   // cetvel sayfası kendi içinde kayar
 
   // Üstte sabit duran başlık + araç çubuğunun alt kenarı (ekran koordinatı)
+  var tlToolbar = document.querySelector('#ani-cetveli > .timeline-toolbar');
   function stickyBottom() {
-    var bar = document.querySelector('.timeline-toolbar');
-    return bar ? bar.getBoundingClientRect().bottom : 0;
+    return tlScroller.getBoundingClientRect().top + (tlToolbar ? tlToolbar.offsetHeight : 0);
   }
 
   // Bakılan dönem: başlığı, sabit araç çubuğunun biraz altındaki "okuma çizgisini" geçmiş son dönem
@@ -2327,7 +2328,7 @@
     var s = tlScroller;
     var nearBottom = s.clientHeight + s.scrollTop >= s.scrollHeight - 4;
     if (nearBottom && s.scrollTop > 0) return n - 1;
-    var line = stickyBottom() + 60;
+    var line = stickyBottom() + 1;
     var idx = 0;
     for (var i = 0; i < n; i++) {
       if (periodEls[tlPeriods[i]].getBoundingClientRect().top <= line) idx = i; else break;
@@ -2339,9 +2340,28 @@
 
   function showPeriodHeading(key) {
     headingKey = key;
-    periodLabelEl.textContent = key ? periodLabel(key, tlMode) : '';
     var count = key ? entriesIn(key).length : 0;
     periodCountEl.textContent = count ? count + ' anı' : '';
+    periodLabelEl.textContent = key ? periodLabel(key, tlMode) : '';
+    fitPeriodLabel(key);
+  }
+
+  // Çubuktaki ad sığmıyorsa ay adlarını kısalt ("Ağustos" → "Ağu"); kesme yok
+  function shortPeriodLabel(text) {
+    MONTHS.forEach(function (m, i) { text = text.split(m).join(MONTHS_SHORT[i]); });
+    return text;
+  }
+
+  function fitPeriodLabel(key) {
+    if (!key || !periodLabelEl.isConnected || !periodLabelEl.offsetParent) return;
+    var heading = periodLabelEl.parentElement;
+    var free = function () { return heading.clientWidth - (periodCountEl.offsetWidth ? periodCountEl.offsetWidth + 8 : 0); };
+    periodLabelEl.style.fontSize = '';
+    if (periodLabelEl.scrollWidth <= free()) return;
+    periodLabelEl.textContent = shortPeriodLabel(periodLabel(key, tlMode));
+    // hâlâ sığmıyorsa yazıyı adım adım küçült (en fazla %30)
+    var base = parseFloat(getComputedStyle(periodLabelEl).fontSize) || 18;
+    for (var k = 0.95; k >= 0.7 && periodLabelEl.scrollWidth > free(); k -= 0.05) periodLabelEl.style.fontSize = (base * k).toFixed(1) + 'px';
   }
 
   // Başlığı kaydırma konumuna eşitle (sayfa kapalıyken en yeni dönem)
@@ -2349,6 +2369,21 @@
     var idx = timelineVisible() ? scrollPosition() : 0;
     tlKey = tlPeriods[idx] || null;
     if (tlKey !== headingKey) showPeriodHeading(tlKey);
+  }
+
+  // Dönem başlıkları çubuğun alt kenarından geçince (IntersectionObserver, kök: cetvelin kaydırma alanı)
+  var periodObserver = null;
+  function observePeriodTitles() {
+    if (!('IntersectionObserver' in window)) return;
+    if (periodObserver) periodObserver.disconnect();
+    var barH = tlToolbar ? tlToolbar.offsetHeight : 0;
+    periodObserver = new IntersectionObserver(function () {
+      if (timelineVisible()) syncToScroll();
+    }, { root: tlScroller, rootMargin: '-' + Math.max(0, barH - 1) + 'px 0px 0px 0px', threshold: [0, 1] });
+    Object.keys(periodEls).forEach(function (k) {
+      var title = periodEls[k].querySelector('.timeline-period-title') || periodEls[k];
+      periodObserver.observe(title);
+    });
   }
 
   var scrollRaf = 0;
@@ -2363,14 +2398,15 @@
     if (!timelineVisible()) { tlPendingKey = key; return; }
     var el = periodEls[key];
     if (!el) return;
-    var top = tlScroller.scrollTop + el.getBoundingClientRect().top - stickyBottom() - 10;
+    // dönem başlığı tam çubuğun alt kenarına: çubuktaki ad ile altındaki dönem aynı
+    var top = tlScroller.scrollTop + el.getBoundingClientRect().top - stickyBottom();
     tlScroller.scrollTo({ top: Math.max(0, top), behavior: smooth && !reduced() ? 'smooth' : 'instant' });
   }
 
   function scrollTimelineToTop() {
     if (!timelineVisible()) { tlPendingKey = null; return; }
     var panel = document.getElementById('timelinePanel');
-    var top = tlScroller.scrollTop + panel.getBoundingClientRect().top - (siteHeaderEl ? siteHeaderEl.offsetHeight : 0) - 12;
+    var top = tlScroller.scrollTop + panel.getBoundingClientRect().top - stickyBottom() - 12;
     if (tlScroller.scrollTop > top) tlScroller.scrollTo({ top: Math.max(0, top), behavior: 'instant' });
   }
 
@@ -2517,6 +2553,8 @@
   pageShownHooks.push(function (id) {
     if (id !== 'ani-cetveli') return;
     if (tlPendingKey) { var k = tlPendingKey; tlPendingKey = null; scrollToPeriod(k, false); }
+    observePeriodTitles();
+    headingKey = null;   // görünür olunca ad yeniden sığdırılsın
     syncToScroll();
   });
   showPage(pageFromHash(), { instant: true });
