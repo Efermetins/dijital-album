@@ -2,13 +2,69 @@
 <html lang="tr" data-auth="loading">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<!-- TEK YÜKSEKLİK KAYNAĞI: --app-height (stil dosyalarından önce çalışır).
+     iOS hatası: ana ekran modunda (black-translucent + viewport-fit=cover) sayfanın yüksekliği
+     ekrandan durum çubuğu kadar KISA bildirilir (100vh, dvh, inset:0, innerHeight hepsi kısa).
+     Ana ekran modunda gerçek ekran yüksekliği screen'den alınır. Klavye açılınca küçültülmez,
+     açılış sahnesi oynarken değiştirilmez. -->
+<script>
+  (function () {
+    var de = document.documentElement;
+    var standalone = window.navigator.standalone === true ||
+      !!(window.matchMedia && window.matchMedia('(display-mode: standalone)').matches);
+    if (standalone) de.classList.add('is-standalone');
+    var current = 0, currentLand = null, pending = false;
+
+    function landscape() {
+      if (typeof window.orientation === 'number') return Math.abs(window.orientation) === 90;
+      if (window.screen && screen.orientation && screen.orientation.type) return /landscape/.test(screen.orientation.type);
+      return window.innerWidth > window.innerHeight;
+    }
+    function typing() {
+      var a = document.activeElement;
+      return !!a && (a.tagName === 'INPUT' || a.tagName === 'TEXTAREA' || a.isContentEditable);
+    }
+    function measure() {
+      var land = landscape(), h = window.innerHeight;
+      // iOS'ta screen.width/height yönle değişmez: dikeyde uzun kenar, yatayda kısa kenar
+      if (standalone && window.screen) h = Math.max(h, land ? Math.min(screen.width, screen.height) : Math.max(screen.width, screen.height));
+      return { h: Math.round(h), land: land };
+    }
+    function apply(force) {
+      if (!force && de.classList.contains('intro-playing')) { pending = true; return; }
+      var m = measure();
+      if (!force && m.land === currentLand && m.h < current && typing()) return;   // klavye: küçültme
+      pending = false;
+      current = m.h; currentLand = m.land;
+      de.style.setProperty('--app-height', m.h + 'px');
+    }
+
+    apply(true);
+    window.addEventListener('resize', function () { apply(false); });
+    window.addEventListener('orientationchange', function () {
+      setTimeout(function () { apply(false); }, 120);
+      setTimeout(function () { apply(false); }, 500);    // iOS yeni ölçüyü geç bildirir
+    });
+    // Klavye kapanınca iOS'un kaydırdığı sayfayı yerine koy
+    document.addEventListener('focusout', function () {
+      setTimeout(function () {
+        if (!typing() && (window.pageYOffset || document.documentElement.scrollTop)) window.scrollTo(0, 0);
+      }, 120);
+    });
+    window.__appHeight = {
+      update: function () { apply(false); },
+      flush: function () { if (pending) apply(false); },
+      standalone: standalone
+    };
+  })();
+</script>
 <!-- İlk boyama: oturum açıksa açılış sahnesi oynayacak → JS ve yazı tipleri gelmeden önce bile
-     zemin gökyüzü rengi olsun (beyaz ekran yok). Oturum yoksa giriş ekranının sade zemini kalır. -->
+     beyaz ekran yok: açılış katmanı gökyüzü, sayfa zemini sahnenin alt rengi (asfalt). -->
 <style>
-  html.intro-boot, html.intro-boot body { background: #E4E2EF; }
+  html.intro-boot, html.intro-boot body { background: #8F9399; }
   html.intro-boot .splash.is-pending { background: #E4E2EF; }
 </style>
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="theme-color" content="#FAFAF8" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#0E0E0E" media="(prefers-color-scheme: dark)">
 <script>
@@ -253,32 +309,32 @@
     </div>
   </section>
 
+  <!-- ================= MOBİL SEKME ÇUBUĞU ================= -->
+  <nav class="tab-bar" id="tabBar" aria-label="Bölümler">
+    <a href="#anasayfa" data-nav-link data-target="anasayfa">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9h14v-9"/></svg>
+      <span>Ana Sayfa</span>
+    </a>
+    <a href="#ani-cetveli" data-nav-link data-target="ani-cetveli">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
+      <span>Anı Cetveli</span>
+    </a>
+    <a href="#galeri" data-nav-link data-target="galeri">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m4 17 5-5 4 4 3-3 4 4"/></svg>
+      <span>Galeri</span>
+    </a>
+    <a href="#sozluk" data-nav-link data-target="sozluk">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 6.5c-1.8-1.3-4.3-2-7.5-2v13c3.2 0 5.7.7 7.5 2 1.8-1.3 4.3-2 7.5-2v-13c-3.2 0-5.7.7-7.5 2z"/><path d="M12 6.5v13"/></svg>
+      <span>Sözlük</span>
+    </a>
+    <a href="#ayarlar" data-nav-link data-target="ayarlar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span>Ayarlar</span>
+    </a>
+  </nav>
 </main>
 
 
-<!-- ================= MOBİL SEKME ÇUBUĞU ================= -->
-<nav class="tab-bar" id="tabBar" aria-label="Bölümler">
-  <a href="#anasayfa" data-nav-link data-target="anasayfa">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="M3 11.5 12 4l9 7.5"/><path d="M5 10v9h14v-9"/></svg>
-    <span>Ana Sayfa</span>
-  </a>
-  <a href="#ani-cetveli" data-nav-link data-target="ani-cetveli">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/></svg>
-    <span>Anı Cetveli</span>
-  </a>
-  <a href="#galeri" data-nav-link data-target="galeri">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="3.5" y="4.5" width="17" height="15" rx="2"/><circle cx="9" cy="10" r="1.6"/><path d="m4 17 5-5 4 4 3-3 4 4"/></svg>
-    <span>Galeri</span>
-  </a>
-  <a href="#sozluk" data-nav-link data-target="sozluk">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 6.5c-1.8-1.3-4.3-2-7.5-2v13c3.2 0 5.7.7 7.5 2 1.8-1.3 4.3-2 7.5-2v-13c-3.2 0-5.7.7-7.5 2z"/><path d="M12 6.5v13"/></svg>
-    <span>Sözlük</span>
-  </a>
-  <a href="#ayarlar" data-nav-link data-target="ayarlar">
-    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-    <span>Ayarlar</span>
-  </a>
-</nav>
 
 <!-- ================= FOTOĞRAF PENCERESİ (LIGHTBOX) ================= -->
 <div class="dialog dialog--flip lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Fotoğraf ve video görüntüleyici" hidden>

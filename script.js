@@ -29,6 +29,86 @@
   document.addEventListener('touchstart', function () {}, { passive: true });
 
   // Çevrimdışı destek: uygulama dosyaları ve görüntülenen fotoğraflar önbelleğe alınır (sw.js)
+  /* ---- Güvenlik ağı: html/body zemini = ekranın en ALTINDA görünen renk ----
+     iOS ekranı kısa bildirirse açıkta kalan şerit, üstündeki katmanla aynı renkte olur.
+     Açılış sahnesinde tuvalin alt satırı kullanılır (paintIntroBottom). */
+  function setBottomColor(col) {
+    document.documentElement.style.backgroundColor = col || '';
+    document.body.style.backgroundColor = col || '';
+  }
+
+  function parseColor(s) {
+    var m = /rgba?\(([^)]+)\)/.exec(s || '');
+    if (!m) return null;
+    var p = m[1].split(/[\s,\/]+/).filter(Boolean).map(parseFloat);
+    return { r: p[0], g: p[1], b: p[2], a: p.length > 3 ? p[3] : 1 };
+  }
+
+  function syncBottomColor() {
+    var de = document.documentElement;
+    if (de.classList.contains('intro-playing')) return;
+    var h = parseFloat(getComputedStyle(de).getPropertyValue('--app-height')) || window.innerHeight;
+    var y = Math.min(h, window.innerHeight) - 1;
+    var el = document.elementFromPoint(Math.max(1, Math.round(window.innerWidth / 2)), y);
+    // Yarı saydam katmanları (görev çubuğu camı gibi) sayfa zeminiyle karıştır
+    var paper = getComputedStyle(de).getPropertyValue('--paper').trim() || '#FAFAF8';
+    var layers = [];
+    for (var n = el; n && n !== document.body && n !== de; n = n.parentElement) {
+      var c = parseColor(getComputedStyle(n).backgroundColor);
+      if (c && c.a > 0) { layers.push(c); if (c.a >= 1) break; }
+    }
+    if (!layers.length) { setBottomColor(''); return; }
+    var base = layers[layers.length - 1].a >= 1 ? layers.pop() : null;
+    if (!base) {
+      var pm = /^#([0-9a-f]{6})$/i.exec(paper);
+      base = pm ? { r: parseInt(pm[1].slice(0, 2), 16), g: parseInt(pm[1].slice(2, 4), 16), b: parseInt(pm[1].slice(4, 6), 16), a: 1 } : { r: 250, g: 250, b: 248, a: 1 };
+    }
+    for (var i = layers.length - 1; i >= 0; i--) {
+      var L = layers[i];
+      base = { r: L.r * L.a + base.r * (1 - L.a), g: L.g * L.a + base.g * (1 - L.a), b: L.b * L.a + base.b * (1 - L.a), a: 1 };
+    }
+    setBottomColor('rgb(' + Math.round(base.r) + ',' + Math.round(base.g) + ',' + Math.round(base.b) + ')');
+  }
+
+  window.addEventListener('resize', function () { setTimeout(syncBottomColor, 60); });
+  if (window.matchMedia) {
+    var schemeMq = window.matchMedia('(prefers-color-scheme: dark)');
+    if (schemeMq.addEventListener) schemeMq.addEventListener('change', function () { setTimeout(syncBottomColor, 60); });
+  }
+
+  /* ---- ?debug=1 : telefonda yüksekliği ölçmek için ----
+     Ortada ölçümler; en üst 2 px mavi, en alt 2 px kırmızı çizgi (ikisi de görünüyorsa
+     katmanlar ekranı tam kaplıyor). Parametre yoksa hiçbir şey eklenmez. */
+  if (/[?&]debug=1(&|$)/.test(location.search)) {
+    var dbgBox = document.createElement('div');
+    dbgBox.className = 'debug-box';
+    var dbgTop = document.createElement('div'); dbgTop.className = 'debug-line debug-line--top';
+    var dbgBot = document.createElement('div'); dbgBot.className = 'debug-line debug-line--bottom';
+    var dbgProbe = document.createElement('div');
+    dbgProbe.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;' +
+      'padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px);';
+    document.body.appendChild(dbgProbe);
+    document.body.appendChild(dbgTop);
+    document.body.appendChild(dbgBot);
+    document.body.appendChild(dbgBox);
+    var dbgUpdate = function () {
+      var cs = getComputedStyle(dbgProbe), de = document.documentElement;
+      dbgBox.textContent = [
+        'innerHeight      ' + window.innerHeight,
+        'screen.height    ' + (window.screen ? screen.height : '-'),
+        'visualViewport   ' + (window.visualViewport ? Math.round(window.visualViewport.height) : '-'),
+        '--app-height     ' + (getComputedStyle(de).getPropertyValue('--app-height').trim() || '-'),
+        'standalone       ' + !!(window.__appHeight && window.__appHeight.standalone),
+        'safe-area top    ' + cs.paddingTop,
+        'safe-area bottom ' + cs.paddingBottom,
+        'zemin            ' + (de.style.backgroundColor || 'css')
+      ].join('\n');
+    };
+    dbgUpdate();
+    setInterval(dbgUpdate, 500);
+    window.addEventListener('resize', dbgUpdate);
+  }
+
   if ('serviceWorker' in navigator && /^https?:$/.test(location.protocol)) {
     window.addEventListener('load', function () {
       var hadController = !!navigator.serviceWorker.controller;
@@ -437,6 +517,7 @@
         { duration: reduced() ? 160 : 340, easing: EASE });
     }
     pageShownHooks.forEach(function (fn) { fn(id); });
+    syncBottomColor();
   }
 
   function goToPage(id) {
@@ -549,6 +630,7 @@
     el.classList.add('is-open');
     document.documentElement.classList.add('is-locked');
     pausePreviews();
+    setTimeout(syncBottomColor, 420);   // pencere açılış geçişinden sonra
 
     if (opts.animateOpen) opts.animateOpen();
 
@@ -565,6 +647,7 @@
     d.el.classList.remove('is-open');
     document.documentElement.classList.remove('is-locked');
     clearTimeout(d.el._closeTimer);
+    setTimeout(syncBottomColor, 420);
 
     function finish() {
       d.el.hidden = true;
@@ -2782,18 +2865,23 @@
     if (col === skyEdgeColor) return;
     skyEdgeColor = col;
     splash.style.backgroundColor = col;
-    document.documentElement.style.backgroundColor = col;
-    document.body.style.backgroundColor = col;
     themeMetas.forEach(function (m) { m.setAttribute('content', col); });
   }
 
   function paintSkyEdge(sceneY) { setSkyEdge(skyColorAt(sceneY)); }
 
+  var introBottomColor = '';
+  function paintIntroBottom() {
+    try {
+      var d = introCtx.getImageData(1, introCanvas.height - 1, 1, 1).data;
+      var col = 'rgb(' + d[0] + ',' + d[1] + ',' + d[2] + ')';
+      if (col !== introBottomColor) { introBottomColor = col; setBottomColor(col); }
+    } catch (e) { /* okunamazsa zemin olduğu gibi kalır */ }
+  }
+
   function clearSkyEdge() {
     skyEdgeColor = '';
     splash.style.backgroundColor = '';
-    document.documentElement.style.backgroundColor = '';
-    document.body.style.backgroundColor = '';
     themeMetas.forEach(function (m, i) { m.setAttribute('content', themeOriginal[i]); });
   }
 
@@ -2805,6 +2893,7 @@
     c.translate(iOX, iOY + Math.round(cam));
     drawBackground(t);
     paintSkyEdge(-(iOY + Math.round(cam)));
+    paintIntroBottom();
 
     var FOOT = 104, ZX = 128, EX = 111;
     var outDist = iW - iOX - EX + 24;                       // ekranın sağından çıkana kadar
@@ -2846,12 +2935,11 @@
   // Tuvali ekran oranına göre boyutlandır: dikeyde üstte daha çok gökyüzü,
   // yatayda iki yana uzayan sokak. Sahne her zaman alt-ortada durur.
   var introSizedW = 0;   // sahne en son hangi ekran genişliğine göre boyutlandı
-  var iHD = 0;           // tuvalin çizilen yüksekliği (iH + ekran uzarsa görünecek pay)
+  var iHD = 0;           // tuvalin çizilen yüksekliği
   var titleRows = null;  // yazının tuvaldeki satır aralığı
   function sizeIntro() {
     if (!introCtx) return;
-    // yükseklik: çentiğin altındaki alan (sahne, durum çubuğu ayarından bağımsız aynı kalır)
-    introCanvas.style.height = '';
+    // yükseklik: açılış katmanının (--app-height) çentik altında kalan kısmı
     var w = window.innerWidth || 390, h = introCanvas.clientHeight || window.innerHeight || 844;
     introSizedW = w;
     var aspect = w / h;
@@ -2859,14 +2947,10 @@
     else { iH = SCENE_H; iW = Math.min(480, Math.round(SCENE_H * aspect)); }
     iOX = Math.round((iW - SCENE_W) / 2);
     iOY = Math.round((iH - SCENE_H) * 0.72);               // dikeyde sokak alt kısımda, altında sadece cadde
-    // Ekranın olabilecek en uzun hâli kadar tuval: fazlası aşağıda kalır (cadde)
     var sy = h / iH;
-    var tallest = Math.max(h, (window.screen && Math.max(screen.height, screen.width)) || 0, window.innerHeight || 0, splash.clientHeight || 0);
-    var extra = Math.ceil((tallest + 160 - h) / sy);   // +160: ekran beklenenden de uzarsa pay
-    iHD = iH + extra;
+    iHD = iH;
     introCanvas.width = iW;
-    introCanvas.height = iHD;
-    introCanvas.style.height = Math.round(iHD * sy) + 'px';
+    introCanvas.height = iH;
     introCtx.imageSmoothingEnabled = false;
 
     // "Hoş Geldin" yazısının sahne sonunda kapladığı satırlar (bulutlar oraya düşmesin)
@@ -2912,9 +2996,11 @@
         setTimeout(function () { if (token === introToken) cancelAnimationFrame(introRaf); }, 600);
       }
       // sayfa zemini hemen normale dönsün (splash solarken arkada uygulama görünür)
-      document.documentElement.classList.remove('intro-boot');
-      document.documentElement.style.backgroundColor = '';
-      document.body.style.backgroundColor = '';
+      document.documentElement.classList.remove('intro-boot', 'intro-playing');
+      introBottomColor = '';
+      if (window.__appHeight) window.__appHeight.flush();
+      syncBottomColor();
+      setTimeout(syncBottomColor, 700);   // açılış katmanı tamamen kalkınca
       themeMetas.forEach(function (m, i) { m.setAttribute('content', themeOriginal[i]); });
       setTimeout(function () { if (token === introToken && !introVisible) clearSkyEdge(); }, 650);
     });
@@ -2933,6 +3019,7 @@
     introContentReady = false;
     cancelAnimationFrame(introRaf);
     splash.classList.remove('is-hidden', 'show-title', 'is-waiting', 'is-reduced', 'is-pending');
+    document.documentElement.classList.add('intro-playing');
     clearTimeout(introTimer);
     introTimer = setTimeout(function () { introContentReady = true; maybeFinishIntro(); }, SPLASH_MAX_MS);
 
@@ -2956,7 +3043,9 @@
     if (now === true && introVisible) { introAnimDone = true; introContentReady = true; finishIntro(); return; }
     if (!introVisible) {
       // Sahne başlamadı (oturum yok): bekleme zeminini kısa bir solmayla kaldır → giriş ekranı
-      document.documentElement.classList.remove('intro-boot');
+      document.documentElement.classList.remove('intro-boot', 'intro-playing');
+      if (window.__appHeight) window.__appHeight.flush();
+      setTimeout(syncBottomColor, 0);
       if (splash.classList.contains('is-hidden')) return;
       if (reduced() && splash.animate) splash.animate([{ opacity: 1 }, { opacity: 0 }], { duration: 200, easing: 'ease-out' });
       splash.classList.add('is-hidden');

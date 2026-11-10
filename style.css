@@ -138,8 +138,10 @@ button { font-family: inherit; cursor: pointer; color: inherit; }
 /* ---------- ÜST BAŞLIK (cam) ---------- */
 
 .site-header {
-  position: sticky;
+  position: fixed;
   top: 0;
+  left: 0;
+  right: 0;
   z-index: 30;
   display: flex;
   align-items: center;
@@ -216,11 +218,11 @@ button { font-family: inherit; cursor: pointer; color: inherit; }
 .splash {
   position: fixed;
   top: 0;
-  right: 0;
-  bottom: 0;
   left: 0;
+  right: 0;
+  height: var(--app-height, 100vh);
   z-index: 100;
-  overflow: visible;              /* sahne (asfalt) gerekirse ekranın en altının da ötesine taşar */
+  overflow: hidden;
   background: #E6E1EF;            /* sahnenin gökyüzü rengi: tuval çizilmeden önce de uyumlu */
   -webkit-user-select: none;
   user-select: none;
@@ -263,7 +265,7 @@ button { font-family: inherit; cursor: pointer; color: inherit; }
   align-items: center;
   justify-content: center;
   gap: 0.35rem;
-  padding: 0 1.5rem 12vh;
+  padding: 0 1.5rem calc(var(--app-height, 100vh) * 0.12);
   text-align: center;
   opacity: 0;
   transform: translateY(12px);
@@ -352,7 +354,6 @@ html:not([data-auth="in"]) .tab-bar { display: none; }
 html:not([data-auth="out"]) .auth-screen { display: none; }
 
 .auth-screen {
-  position: relative;
   isolation: isolate;
   overflow: hidden;
   display: grid;
@@ -1140,7 +1141,7 @@ section { padding: 4.5rem 1.25rem; }
 /* ---------- SEKME ÇUBUĞU (mobil, cam) ---------- */
 
 .tab-bar {
-  position: fixed;
+  position: absolute;
   left: 0;
   right: 0;
   bottom: 0;
@@ -1185,7 +1186,10 @@ section { padding: 4.5rem 1.25rem; }
 
 .dialog {
   position: fixed;
-  inset: 0;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: var(--app-height, 100vh);
   z-index: 50;
   opacity: 0;
   transition: opacity 280ms var(--ease);
@@ -1699,7 +1703,7 @@ section { padding: 4.5rem 1.25rem; }
 .toast {
   position: fixed;
   left: 50%;
-  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px) + 16px);
+  top: calc(var(--app-height, 100vh) - var(--tabbar-h) - env(safe-area-inset-bottom, 0px) - 16px);
   z-index: 60;
   max-width: calc(100% - 32px);
   padding: 0.7rem 1.1rem;
@@ -1709,16 +1713,17 @@ section { padding: 4.5rem 1.25rem; }
   font-size: 0.92rem;
   font-weight: 500;
   box-shadow: 0 16px 30px -16px var(--shadow-lift);
-  transform: translate(-50%, 12px);
+  transform: translate(-50%, calc(-100% + 12px));
   opacity: 0;
+  visibility: hidden;
   pointer-events: none;
   transition: opacity var(--dur) var(--ease), transform var(--dur) var(--ease);
 }
 
-.toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
+.toast.is-visible { opacity: 1; visibility: visible; transform: translate(-50%, -100%); }
 
 @media (min-width: 860px) {
-  .toast { bottom: 24px; }
+  .toast { top: calc(var(--app-height, 100vh) - 24px); }
 }
 
 .lightbox-count {
@@ -1808,7 +1813,7 @@ section { padding: 4.5rem 1.25rem; }
 
 .memory-media {
   aspect-ratio: 4 / 3;
-  max-height: 60vh;
+  max-height: calc(var(--app-height, 100vh) * 0.6);
   width: 100%;
   background: var(--paper-deep);
   display: flex;
@@ -2026,7 +2031,7 @@ section { padding: 4.5rem 1.25rem; }
 /* ---------- "YENİ BİR ANI" PENCERESİ ---------- */
 .add-sheet {
   max-width: 34rem;
-  max-height: calc(100% - env(safe-area-inset-top, 0px) - 12px);   /* pencereye (inset: 0) göre */
+  max-height: calc(100% - env(safe-area-inset-top, 0px) - 12px);   /* pencereye (--app-height) göre */
   overflow-y: auto;
   overscroll-behavior: contain;
   -webkit-overflow-scrolling: touch;
@@ -2556,13 +2561,13 @@ html[data-auth="loading"] .net-banner { display: none; }
 video.is-mirrored { transform: scaleX(-1); }
 
 /* =========================================================
-   YÜKSEKLİK VE GÜVENLİ ALAN SİSTEMİ (tek kural)
-   - html/body kaymaz, yüksekliği %100; hiçbir yerde vh/dvh/svh ile yükseklik tahmini yok.
-   - Kök kapsayıcı (.pages) ekrana dört kenarından (inset: 0) sabitlenir.
-   - Her sayfa kökün içinde inset: 0 ile tam ekrandır ve KENDİ içinde kayar.
-   - Üst başlık ve alt sekme çubuğu sabit; sayfa içeriği altlarından geçer,
-     baştan/sondan onların yüksekliği (+ güvenli alan) kadar boşluk bırakır.
-   - Açılış sahnesi ve giriş ekranı da inset: 0 ile ekranı kaplar.
+   YÜKSEKLİK SİSTEMİ — tek kaynak: --app-height (index.html <head> betiği hesaplar)
+   - html/body kaymaz. Yükseklik için vh / dvh / inset / bottom:0 kullanılmaz.
+   - Tam ekran katmanlar (açılış, giriş, uygulama kökü, pencereler):
+       position: fixed; top: 0; left: 0; right: 0; height: var(--app-height)
+   - Sayfalar uygulama kökünün içinde tam boy; her sayfa kendi içinde kayar.
+   - Görev çubuğu kökün dibinde; ev çubuğu payı sadece onun padding-bottom'unda.
+   - Güvenlik ağı: html/body zemini o an ekranın ALTINDA görünen renk (script.js → syncBottomColor).
    ========================================================= */
 :root {
   --top-space: calc(var(--header-h) + env(safe-area-inset-top, 0px));
@@ -2570,39 +2575,39 @@ video.is-mirrored { transform: scaleX(-1); }
 }
 
 @media (min-width: 860px) {
-  :root { --bottom-space: 0px; }   /* geniş ekranda alt sekme çubuğu yok */
+  :root { --bottom-space: 0px; }   /* geniş ekranda görev çubuğu yok */
 }
 
-html,
-body {
+html {
   height: 100%;
+  min-height: calc(100% + env(safe-area-inset-top, 0px));
+  background: var(--paper);
+}
+
+body {
   margin: 0;
+  min-height: 100%;
   overflow: hidden;
   overscroll-behavior: none;
 }
 
-.site-header {
+.pages,
+.auth-screen {
   position: fixed;
   top: 0;
   left: 0;
   right: 0;
+  height: var(--app-height, 100vh);
 }
 
-.pages {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
-  z-index: 0;
-}
+.pages { z-index: 0; }
 
 .page {
   position: absolute;
   top: 0;
-  right: 0;
-  bottom: 0;
   left: 0;
+  right: 0;
+  height: 100%;
   margin: 0;
   overflow-x: hidden;
   overflow-y: auto;
@@ -2612,7 +2617,7 @@ body {
   padding-bottom: calc(4.5rem + var(--bottom-space));
 }
 
-/* Ortadaki sütun: sayfa (kaydırma alanı) ekran genişliğinde, içerik eskisi gibi en fazla --maxw */
+/* Ortadaki sütun: kaydırma alanı ekran genişliğinde, içerik eskisi gibi en fazla --maxw */
 .page.timeline-section,
 .page.gallery-section {
   max-width: none;
@@ -2623,8 +2628,6 @@ body {
 /* Ana sayfa: ilk ekranı tam dolduran ortalanmış alan, altında imza */
 .page.hero {
   display: block;
-  overflow-x: hidden;
-  overflow-y: auto;
   padding: var(--top-space) 0 var(--bottom-space);
 }
 
@@ -2639,27 +2642,38 @@ body {
 /* Pencere açıkken arkadaki sayfa kaymasın */
 html.is-locked .page { overflow: hidden; }
 
-/* Giriş ekranı: ekranı kaplar, gerekirse (klavye) kendi içinde kayar */
+/* Giriş ekranı: gerekirse (klavye) kendi içinde kayar */
 .auth-screen {
-  position: fixed;
-  top: 0;
-  right: 0;
-  bottom: 0;
-  left: 0;
   overflow-x: hidden;
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
 }
 
-/* Alt sekme çubuğu: zemini ev çubuğu bölgesini de doldurur; iPhone ekranı bildirilenden
-   uzun gösterirse altta boşluk görünmesin diye zemin aşağı doğru uzatılır */
-.tab-bar::before {
-  content: "";
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 100%;
-  height: 200px;
-  background: inherit;
+/* ---------- ?debug=1 : yükseklik ölçümleri ---------- */
+.debug-box {
+  position: fixed;
+  left: 50%;
+  top: calc(var(--app-height, 100vh) / 2);
+  z-index: 2147483647;
+  transform: translate(-50%, -50%);
+  min-width: 15rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 12px;
+  background: rgba(0, 0, 0, 0.82);
+  color: #FFFFFF;
+  font: 600 12px/1.55 ui-monospace, Menlo, monospace;
+  white-space: pre;
   pointer-events: none;
 }
+
+.debug-line {
+  position: fixed;
+  left: 0;
+  right: 0;
+  height: 2px;
+  z-index: 2147483647;
+  pointer-events: none;
+}
+
+.debug-line--top { top: 0; background: #0057FF; }
+.debug-line--bottom { top: calc(var(--app-height, 100vh) - 2px); background: #FF0000; }
