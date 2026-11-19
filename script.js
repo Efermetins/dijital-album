@@ -4155,10 +4155,21 @@
 
   function detectFrontCamera(file, kind) {
     if (kind === 'photo') {
-      return readBytes(file.slice(0, 256 * 1024)).then(function (dv) {
+      return readBytes(file.slice(0, 512 * 1024)).then(function (dv) {
         var x = readExif(dv);
-        if (!/front/i.test((x.lensModel || '') + ' ' + (x.lensMake || ''))) return false;
-        var m = /^(\d{4}):(\d\d):(\d\d) (\d\d):(\d\d):(\d\d)/.exec(x.dateTimeOriginal || '');
+        var lens = (x.lensModel || '') + ' ' + (x.lensMake || '');
+        var date = x.dateTimeOriginal || '';
+        if (!x.lensModel && !x.lensMake && dv) {
+          // HEIC ya da farklı bir yapı: EXIF metinleri dosyada düz yazı olarak durur
+          var s = '';
+          for (var i = 0; i < dv.byteLength; i++) { var c = dv.getUint8(i); s += c >= 32 && c < 127 ? String.fromCharCode(c) : ' '; }
+          var lm = /[^ ]{0,20} ?(front|back)[^ ]* (truedepth )?camera/i.exec(s);
+          lens = lm ? lm[0] : '';
+          var dm = /(\d{4}):(\d\d):(\d\d) (\d\d):(\d\d):(\d\d)/.exec(s);
+          date = dm ? dm[0] : '';
+        }
+        if (!/front/i.test(lens)) return false;
+        var m = /^(\d{4}):(\d\d):(\d\d) (\d\d):(\d\d):(\d\d)/.exec(date);
         return isFresh(m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime() : null);
       }).catch(function () { return false; });
     }
@@ -4180,11 +4191,17 @@
     var file = memPhoto.files && memPhoto.files[0];
     var kind = file ? mediaKind(file) : null;
     if (!kind) return;
-    detectFrontCamera(file, kind).then(function (front) {
-      if (!front || !memPhoto.files || memPhoto.files[0] !== file) return;
+    if (selfieNext) {
+      selfieNext = false;
       setPickFlip(true);
       if (mediaFlipHint) mediaFlipHint.textContent = FLIP_HINT_AUTO;
-    });
+    } else {
+      detectFrontCamera(file, kind).then(function (front) {
+        if (!front || !memPhoto.files || memPhoto.files[0] !== file) return;
+        setPickFlip(true);
+        if (mediaFlipHint) mediaFlipHint.textContent = FLIP_HINT_AUTO;
+      });
+    }
     pickUrl = URL.createObjectURL(file);
     var el = document.createElement(kind === 'video' ? 'video' : 'img');
     el.src = pickUrl;
@@ -4192,6 +4209,25 @@
     else el.alt = '';
     mediaPickFrame.appendChild(el);
     mediaPick.hidden = false;
+  }
+
+  // "Selfie çek": ön kamerayı doğrudan açar; seçilen dosya ana dosya alanına aktarılır
+  var selfieBtn = document.getElementById('selfieBtn');
+  var memSelfie = document.getElementById('memSelfie');
+  var selfieNext = false;
+  if (selfieBtn && memSelfie) {
+    selfieBtn.addEventListener('click', function () { memSelfie.value = ''; memSelfie.click(); });
+    memSelfie.addEventListener('change', function () {
+      var f = memSelfie.files && memSelfie.files[0];
+      if (!f) return;
+      try {
+        var dt = new DataTransfer();
+        dt.items.add(f);
+        memPhoto.files = dt.files;
+      } catch (e) { return; }
+      selfieNext = true;
+      memPhoto.dispatchEvent(new Event('change', { bubbles: true }));
+    });
   }
 
   if (memPhoto && mediaPick) {
