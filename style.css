@@ -2733,3 +2733,6 @@ html.is-locked .page { overflow: hidden; }
 .auth-screen::-webkit-scrollbar,
 .memory-scroll::-webkit-scrollbar,
 .add-sheet::-webkit-scrollbar { display: none; }
+
+/* Anı düzenle: "Çevir" satırı */
+.md-flip-row { display: flex; align-items: center; gap: 0.75rem; flex-wrap: wrap; }

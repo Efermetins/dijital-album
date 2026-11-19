@@ -755,6 +755,8 @@
     var saveBtn = q('.md-save'), cancelBtn = q('.md-cancel');
     var confirmEl = q('.md-confirm'), yesBtn = q('.md-confirm-yes'), noBtn = q('.md-confirm-no');
     var statusEl = q('.md-status');
+    var flipRow = q('.md-flip-row'), flipBtn = q('.md-flip');
+    var flipPending = false;
     var entry = null;
     var mode = 'view'; // 'view' | 'edit' | 'confirm'
 
@@ -779,7 +781,18 @@
       noteEl.hidden = !noteEl.textContent;
     }
 
+    function setFlipPending(on) {
+      flipPending = on;
+      flipBtn.setAttribute('aria-pressed', String(on));
+    }
+
+    flipBtn.addEventListener('click', function () { setFlipPending(!flipPending); });
+
     editBtn.addEventListener('click', function () {
+      // Fotoğrafı / videosu olan anılarda "Çevir"
+      var m = entry.media;
+      flipRow.hidden = !(m && m.src && (entry.photoPath || entry.videoPath));
+      setFlipPending(false);
       inTitle.value = entry.title;
       inDate.value = entry.dateValue || '';
       inNote.value = entry.desc || '';
@@ -803,13 +816,27 @@
       if (!title) { statusEl.textContent = 'Başlık boş olamaz.'; inTitle.focus(); return; }
       saveBtn.disabled = cancelBtn.disabled = true;
       statusEl.textContent = 'Kaydediliyor...';
-      updateMemory(entry, { title: title, date: inDate.value || null, note: inNote.value.trim() || null })
+      var fields = { title: title, date: inDate.value || null, note: inNote.value.trim() || null };
+      var flip = flipPending && !flipRow.hidden;
+      if (flip && entry.videoPath && mirroredColumnMissing) {
+        statusEl.textContent = 'Videoyu çevirmek için önce supabase/mirrored.sql dosyasını Supabase SQL Editor\'de çalıştır.';
+        saveBtn.disabled = cancelBtn.disabled = false;
+        return;
+      }
+      if (flip) statusEl.textContent = entry.videoPath ? 'Kaydediliyor...' : 'Fotoğraf çevriliyor...';
+      (flip ? flipStoredMedia(entry, fields) : updateMemory(entry, fields))
         .then(function () {
           render();
           setMode('view');
+          setFlipPending(false);
           statusEl.textContent = 'Değişiklikler kaydedildi.';
           if (hooks.onSaved) hooks.onSaved(entry);
-          editBtn.focus();
+          if (flip) {
+            // Yeni fotoğraf / aynalama her yerde (galeri, cetvel, polaroid) yeniden yüklensin
+            if (activeDialog) closeDialog(true);
+            refreshMemories();
+            toast('Anı güncellendi', { heart: true, ms: 1800 });
+          } else editBtn.focus();
         }, function (err) {
           statusEl.textContent = friendlyError(err);
         })
@@ -2016,6 +2043,7 @@
 
     if (media && media.src && media.type === 'video') {
       var v = document.createElement('video');
+      if (media.mirror) v.className = 'is-mirrored';
       v.src = media.src;
       v.controls = true;
       v.playsInline = true;
@@ -3162,7 +3190,13 @@
   //  - oturum yoksa → showLogin bekleme zeminini kaldırır, giriş ekranı açılır;
   //                   giriş yapılınca handleSession sahneyi başlatır
 
-  function columns() { return videoColumnMissing ? LEGACY_COLUMNS : MEMORY_COLUMNS; }
+  var mirroredColumnMissing = false;       // supabase/mirrored.sql henüz çalıştırılmadıysa
+  function columns() { return videoColumnMissing ? LEGACY_COLUMNS : MEMORY_COLUMNS + (mirroredColumnMissing ? '' : ', mirrored'); }
+
+  function isMissingMirroredColumn(err) {
+    var msg = (err && (err.message || '')) + ' ' + (err && err.code || '');
+    return /mirrored/i.test(msg) && /(42703|PGRST204|does not exist|could not find)/i.test(msg);
+  }
 
   function isMissingVideoColumn(err) {
     var msg = (err && (err.message || '')) + ' ' + (err && err.code || '');
@@ -3521,15 +3555,16 @@
     });
   }
 
-  // "Çevir" ile kaydedilen videolar: dosya adı "-mirror" ile biter (veritabanında ek alan gerekmez)
+  // Video aynalı mı: memories.mirrored (yoksa eski yöntem: dosya adı "-mirror" ile biter)
   function isMirroredPath(path) { return /-mirror\.[a-z0-9]+$/i.test(path || ''); }
+  function isMirroredRow(r) { return typeof r.mirrored === 'boolean' ? r.mirrored : isMirroredPath(r.video_url); }
 
   function attachMediaUrls(rows) {
     var photos = rows.map(function (r) { return r.photo_url; }).filter(Boolean);
     var videos = rows.map(function (r) { return r.video_url; }).filter(Boolean);
     return Promise.all([signPaths(PHOTO_BUCKET, photos), signPaths(VIDEO_BUCKET, videos)]).then(function (maps) {
       rows.forEach(function (r) {
-        if (r.video_url && maps[1][r.video_url]) r.media = { type: 'video', src: maps[1][r.video_url], mirror: isMirroredPath(r.video_url) };
+        if (r.video_url && maps[1][r.video_url]) r.media = { type: 'video', src: maps[1][r.video_url], mirror: isMirroredRow(r) };
         else if (r.photo_url && maps[0][r.photo_url]) r.media = { type: 'photo', src: maps[0][r.photo_url] };
         else r.media = null;
       });
@@ -3542,6 +3577,10 @@
       // Video alanı henüz eklenmemişse eski sütunlarla devam et
       if (res.error && !videoColumnMissing && isMissingVideoColumn(res.error)) {
         videoColumnMissing = true;
+        return selectMemories();
+      }
+      if (res.error && !mirroredColumnMissing && isMissingMirroredColumn(res.error)) {
+        mirroredColumnMissing = true;
         return selectMemories();
       }
       return res;
@@ -3560,7 +3599,7 @@
         renderMemoryRows(rows);
         lastLoadedAt = Date.now();
         saveOffline('memories', rows.map(function (r) {
-          return { id: r.id, title: r.title, date: r.date, note: r.note, photo_url: r.photo_url || null, video_url: r.video_url || null, created_at: r.created_at, media: r.media || null };
+          return { id: r.id, title: r.title, date: r.date, note: r.note, photo_url: r.photo_url || null, video_url: r.video_url || null, mirrored: r.mirrored, created_at: r.created_at, media: r.media || null };
         }));
       })
       .catch(function (err) {
@@ -3597,9 +3636,11 @@
 
   /* ---- Anı düzenleme / silme (Supabase) ---- */
 
-  function updateMemory(entry, fields) {
+  function updateMemory(entry, fields, extra) {
+    var change = { title: fields.title, date: fields.date, note: fields.note };
+    if (extra) Object.keys(extra).forEach(function (k) { change[k] = extra[k]; });
     return sb.from('memories')
-      .update({ title: fields.title, date: fields.date, note: fields.note })
+      .update(change)
       .eq('id', entry.memoryId)
       .select(columns())
       .then(function (res) {
@@ -3613,6 +3654,38 @@
         entry.dateText = formatDate(row.date);
         entry.date = parseDateValue(row.date) || entry.createdDay || entry.date;
         return entry;
+      });
+  }
+
+  function flipStoredMedia(entry, fields) {
+    if (entry.videoPath) {
+      var next = !(entry.media && entry.media.mirror);
+      return updateMemory(entry, fields, { mirrored: next }).then(function (e) {
+        if (e.media) e.media.mirror = next;
+        return e;
+      });
+    }
+    var oldPath = entry.photoPath, newPath = null;
+    return sb.storage.from(PHOTO_BUCKET).download(oldPath)
+      .then(function (res) {
+        if (res.error) throw res.error;
+        return flipImageFile(new File([res.data], 'foto.jpg', { type: res.data.type || 'image/jpeg' }));
+      })
+      .then(function (flipped) {
+        newPath = currentUser.id + '/' + uniqueId() + '.jpg';
+        return sb.storage.from(PHOTO_BUCKET).upload(newPath, flipped, { contentType: 'image/jpeg', upsert: false });
+      })
+      .then(function (res) {
+        if (res.error) throw res.error;
+        return updateMemory(entry, fields, { photo_url: newPath });
+      })
+      .then(function (e) {
+        e.photoPath = newPath;
+        sb.storage.from(PHOTO_BUCKET).remove([oldPath]).catch(noop);   // eski (ters) dosya
+        return e;
+      }, function (err) {
+        if (newPath) sb.storage.from(PHOTO_BUCKET).remove([newPath]).catch(noop);
+        throw err;
       });
   }
 
@@ -4014,11 +4087,104 @@
   var mediaFlipHint = document.getElementById('mediaFlipHint');
   var FLIP_HINT = 'Ön kamerayla çektiğin görüntü ters göründüyse dokun.';
 
+  /* ---- Ön kamera algılama ----
+     iPhone'da uygulama içinden açılan kamera (dosya seçici) "Ön Kamerayı Aynala" ayarını
+     uygulamaz; ön kamera çekimi vizörde görünenin tersi gelir. Ön kamera çekimi:
+       - fotoğraf: EXIF LensModel / LensMake içinde "front"
+       - video: QuickTime meta verisinde "front ... camera"
+     Sadece YENİ çekimler (çekim zamanı son 15 dakika) çevrilir: galeriden seçilen eski
+     selfie'ler iPhone Kamera'da zaten kişinin ayarıyla kaydedilmiştir. Arka kamera: dokunulmaz. */
+  var FLIP_HINT_AUTO = 'Ön kamerayla çekildi: çekerken gördüğün gibi kaydedilecek. İstemezsen dokun.';
+  var FRESH_MS = 15 * 60 * 1000;
+
+  function readBytes(blob) {
+    return new Promise(function (resolve) {
+      var fr = new FileReader();
+      fr.onload = function () { resolve(new DataView(fr.result)); };
+      fr.onerror = function () { resolve(null); };
+      fr.readAsArrayBuffer(blob);
+    });
+  }
+
+  // Küçük EXIF okuyucu (JPEG APP1): LensMake, LensModel, DateTimeOriginal, Orientation
+  function readExif(dv) {
+    var out = {};
+    if (!dv || dv.byteLength < 4 || dv.getUint16(0) !== 0xFFD8) return out;
+    var p = 2;
+    while (p + 4 <= dv.byteLength) {
+      if (dv.getUint8(p) !== 0xFF) break;
+      var marker = dv.getUint8(p + 1), len = dv.getUint16(p + 2);
+      if (marker === 0xE1 && p + 10 <= dv.byteLength && dv.getUint32(p + 4) === 0x45786966) { parseTiff(dv, p + 10, out); break; }
+      if (marker === 0xDA || len < 2) break;   // görüntü verisi başladı
+      p += 2 + len;
+    }
+    return out;
+  }
+
+  function parseTiff(dv, t, out) {
+    if (t + 8 > dv.byteLength) return;
+    var le = dv.getUint16(t) === 0x4949;
+    var u16 = function (o) { return dv.getUint16(o, le); }, u32 = function (o) { return dv.getUint32(o, le); };
+    var ascii = function (entry) {
+      var count = u32(entry + 4), at = count > 4 ? t + u32(entry + 8) : entry + 8, s = '';
+      for (var i = 0; i < count && at + i < dv.byteLength; i++) { var c = dv.getUint8(at + i); if (!c) break; s += String.fromCharCode(c); }
+      return s;
+    };
+    var readIfd = function (off, fn) {
+      var o = t + off;
+      if (o + 2 > dv.byteLength) return;
+      var n = u16(o);
+      for (var i = 0; i < n; i++) { var e = o + 2 + i * 12; if (e + 12 > dv.byteLength) return; fn(u16(e), e); }
+    };
+    var exifOff = 0;
+    readIfd(u32(t + 4), function (tag, e) {
+      if (tag === 0x0112) out.orientation = u16(e + 8);
+      else if (tag === 0x8769) exifOff = u32(e + 8);
+    });
+    if (exifOff) readIfd(exifOff, function (tag, e) {
+      if (tag === 0xA433) out.lensMake = ascii(e);
+      else if (tag === 0xA434) out.lensModel = ascii(e);
+      else if (tag === 0x9003) out.dateTimeOriginal = ascii(e);
+    });
+  }
+
+  function isFresh(when) {
+    if (when === null || isNaN(when)) return true;   // zaman yoksa: yeni çekim say
+    return Math.abs(Date.now() - when) < FRESH_MS;
+  }
+
+  function detectFrontCamera(file, kind) {
+    if (kind === 'photo') {
+      return readBytes(file.slice(0, 256 * 1024)).then(function (dv) {
+        var x = readExif(dv);
+        if (!/front/i.test((x.lensModel || '') + ' ' + (x.lensMake || ''))) return false;
+        var m = /^(\d{4}):(\d\d):(\d\d) (\d\d):(\d\d):(\d\d)/.exec(x.dateTimeOriginal || '');
+        return isFresh(m ? new Date(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +m[6]).getTime() : null);
+      }).catch(function () { return false; });
+    }
+    // Video: meta veri dosyanın başında ya da sonunda
+    var MB = 1024 * 1024;
+    var parts = [file.slice(0, MB)];
+    if (file.size > MB) parts.push(file.slice(Math.max(MB, file.size - MB)));
+    return Promise.all(parts.map(readBytes)).then(function (dvs) {
+      var s = '';
+      dvs.forEach(function (dv) { if (!dv) return; for (var i = 0; i < dv.byteLength; i++) { var c = dv.getUint8(i); s += c >= 32 && c < 127 ? String.fromCharCode(c) : ' '; } s += ' '; });
+      if (!/front( truedepth)? camera/i.test(s)) return false;
+      var m = /(20\d\d)-(\d\d)-(\d\d)T(\d\d):(\d\d):(\d\d)([+-]\d\d):?(\d\d)/.exec(s);
+      return isFresh(m ? Date.parse(m[1] + '-' + m[2] + '-' + m[3] + 'T' + m[4] + ':' + m[5] + ':' + m[6] + m[7] + ':' + m[8]) : null);
+    }).catch(function () { return false; });
+  }
+
   function showPick() {
     clearPick();
     var file = memPhoto.files && memPhoto.files[0];
     var kind = file ? mediaKind(file) : null;
     if (!kind) return;
+    detectFrontCamera(file, kind).then(function (front) {
+      if (!front || !memPhoto.files || memPhoto.files[0] !== file) return;
+      setPickFlip(true);
+      if (mediaFlipHint) mediaFlipHint.textContent = FLIP_HINT_AUTO;
+    });
     pickUrl = URL.createObjectURL(file);
     var el = document.createElement(kind === 'video' ? 'video' : 'img');
     el.src = pickUrl;
@@ -4122,7 +4288,16 @@
           formStatus.textContent = 'Kaydediliyor...';
           var row = { title: title, date: dateValue || null, note: note || null, photo_url: kind === 'photo' ? path : null };
           if (!videoColumnMissing) row.video_url = kind === 'video' ? path : null;
-          return sb.from('memories').insert(row).select(columns()).single();
+          if (mirrorVideo && !mirroredColumnMissing) row.mirrored = true;
+          return sb.from('memories').insert(row).select(columns()).single().then(function (res) {
+            // mirrored alanı yoksa onsuz kaydet (dosya adındaki "-mirror" yine aynalı gösterir)
+            if (res.error && isMissingMirroredColumn(res.error)) {
+              mirroredColumnMissing = true;
+              delete row.mirrored;
+              return sb.from('memories').insert(row).select(columns()).single();
+            }
+            return res;
+          });
         })
         .then(function (res) {
           if (res.error) throw res.error;
